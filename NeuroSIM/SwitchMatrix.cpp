@@ -147,6 +147,9 @@ void SwitchMatrix::CalculateArea(double _newHeight, double _newWidth, AreaModify
 				TgHeight = _newHeight / numTgPairPerCol;
 				CalculateGateArea(INV, 1, widthTgN, widthTgP, TgHeight, tech, &hTg, &wTg);
 				
+				// cout << "Area 1: hTg " << hTg << endl;
+
+
 				// DFF
 				dff.CalculateArea(_newHeight, NULL, NONE);
 				
@@ -156,6 +159,9 @@ void SwitchMatrix::CalculateArea(double _newHeight, double _newWidth, AreaModify
 			} else {
 				CalculateGateArea(INV, 1, widthTgN, widthTgP, minCellHeight, tech, &hTg, &wTg); // Pass gate with folding
 				height = hTg * numOutput;
+				
+				// cout << "Area 1.2: hTg " << hTg << endl;
+
 				dff.CalculateArea(height, NULL, NONE);	// Need to give the height information, otherwise by default the area calculation of DFF is in column mode
 				width = (wTg * 2) + dff.width;
 			}
@@ -196,6 +202,8 @@ void SwitchMatrix::CalculateArea(double _newHeight, double _newWidth, AreaModify
 				// widthTgN, widthTgP and numFold can determine the height and width of each pass gate
 				CalculatePassGateArea(widthTgN, widthTgP, tech, numFold, &hTg, &wTg);
 				
+				// cout << "Area 2.1: hTg " << hTg << endl;
+
 				// DFF
 				dff.CalculateArea(NULL, _newWidth, NONE);
 
@@ -204,6 +212,9 @@ void SwitchMatrix::CalculateArea(double _newHeight, double _newWidth, AreaModify
 			} else {
 				// Default (pass gate with folding=1)
 				CalculatePassGateArea(widthTgN, widthTgP, tech, 1, &hTg, &wTg);
+				
+				// cout << "Area 2.2: hTg " << hTg << endl;
+				
 				width = wTg * 2 * numOutput;
 				dff.CalculateArea(NULL, width, NONE);
 				height = hTg + dff.height;
@@ -230,6 +241,11 @@ void SwitchMatrix::CalculateArea(double _newHeight, double _newWidth, AreaModify
 		capTgGateN = CalculateGateCap(widthTgN, tech);
 		capTgGateP = CalculateGateCap(widthTgP, tech);
 		CalculateGateCapacitance(INV, 1, widthTgN, widthTgP, hTg, tech, NULL, &capTgDrain);
+
+		// cout << "widthTgN" << widthTgN << endl;
+		// cout << "widthTgP" << widthTgP << endl;
+		// cout << "hTg" << hTg << endl;
+		// cout << "&capTgDrain"  << capTgDrain << endl;
 		
 	}
 }
@@ -274,9 +290,23 @@ void SwitchMatrix::CalculateLatency(double _rampInput, double _capLoad, double _
 		// readLatency += dff.readLatency;
 
 		writeLatency = horowitz(tr, 0, rampInput, &rampOutput);
+		// cout << " current writeLatency: " << writeLatency << endl;
+		// cout << " current DFF ReadLatency: " << readLatency << endl;
+		//  cout << " resTg: " << resTg << endl;
+		//  cout << " capOutput: " << capOutput << endl;
+		//   cout << " capTgDrain: " << capTgDrain << endl;
+		//  cout << " capTgGateN: " << capTgGateN << endl;
+		//  cout << " capTgGateP: " << capTgGateP << endl;
+		//  cout << " sectionnum: " << sectionnum << endl;
+		//  cout << " tr: " << tr << endl;
+		//  cout << " numRead: " << numRead << endl;
+		//  cout << " unitcap: " << param->unitcap << endl;
+		//  cout << " param->buffernumber: " << param->buffernumber << endl;
+		//  cout << " unitres: " << param->unitres << endl;
 		writeLatency *= numWrite;
 		writeLatency += dff.readLatency;	// Use DFF read latency here because no write in the DFF module
 	}
+
 }
 
 void SwitchMatrix::CalculatePower(double numRead, double numWrite, double activityRowRead, double activityColWrite) {

@@ -46,6 +46,9 @@ public:
 	/* Properties */
 	Type::MemCellType memCellType;	/* Memory cell type (like MRAM, PCRAM, etc.) */
 	int processNode;        /* Cell original process technology node, Unit: nm*/
+	
+	Type::ReadOutMode mem_rdo;
+	
 	double area;			/* Cell area, Unit: F^2 */
 	double aspectRatio;		/* Cell aspect ratio, H/W */
 	double widthInFeatureSize;	/* Cell width, Unit: F */
@@ -78,12 +81,50 @@ public:
 	double capSRAMCell;
 	int multipleCells;	/* Use multiple cells as one weight element to reduce the variation (only layout now) */
 	int maxNumLevelLTP, maxNumLevelLTD;
+
+	int numCapacitors;
+    	double capacitance;
 	
 	
 	/* Optional properties */
 	double widthAccessCMOS;	/* The gate width of CMOS access transistor, Unit: F */
 	double widthSRAMCellNMOS;	/* The gate width of NMOS in SRAM cells, Unit: F */
 	double widthSRAMCellPMOS;	/* The gate width of PMOS in SRAM cells, Unit: F */
+
+    // DISTURB DEGRADATION VARIABLES & FUNCTIONS
+    	double readDisturbFactor;   // Rate of degradation per QNDRO read
+    	double writeDisturbFactor;  // Rate of degradation per half-select write
+
+    	//// Inline function for Read Disturb (QNDRO minor-loop fatigue)
+    	//inline void ApplyReadDisturb(int numReads) {
+    	//    if (memCellType == Type::_2TnC && mem_rdo == Type::qndro) {
+    	//        double shift = numReads * readDisturbFactor;
+    	//        if (shift > 1.0) shift = 1.0; 
+
+    	//        // Degrade current conductance towards the OFF state
+    	//        double currentG = 1.0 / resMemCellOn; 
+    	//        double offG = 1.0 / resMemCellOff;
+    	//        
+    	//        double degradedG = currentG * (1.0 - shift) + offG * shift;
+    	//        resMemCellOn = 1.0 / degradedG; 
+    	//    }
+    	//}
+
+    	//// Inline function for Write Disturb (Half-select V/3 stress)
+    	//inline void ApplyWriteDisturb(int numHalfSelects) {
+    	//    if (memCellType == Type::_2TnC) {
+    	//        double shift = numHalfSelects * writeDisturbFactor;
+    	//        if (shift > 1.0) shift = 1.0;
+
+    	//        // Degrade current OFF state towards the ON state
+    	//        double currentG = 1.0 / resMemCellOff; 
+    	//        double onG = 1.0 / resMemCellOn;
+
+    	//        double degradedG = currentG * (1.0 - shift) + onG * shift;
+    	//        resMemCellOff = 1.0 / degradedG;
+    	//    }
+    	//}
+
 };
 
 #endif /* MEMCELL_H_ */

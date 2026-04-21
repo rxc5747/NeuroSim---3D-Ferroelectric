@@ -74,6 +74,9 @@ void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParamet
 	/*** circuit level parameters ***/
 	switch(param->memcelltype) {
 		// 20250206 update
+		case 7:     cell.memCellType = Type::_1T1C; break;
+		case 6:     cell.memCellType = Type::_1TnC; break;
+		case 5:     cell.memCellType = Type::_2TnC; break;
 		case 4:     cell.memCellType = Type::Cap; break;
 		case 3:     cell.memCellType = Type::FeFET; break;
 		case 2:	    cell.memCellType = Type::RRAM; break;
@@ -88,7 +91,15 @@ void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParamet
 		case 1:	    cell.accessType = CMOS_access;  break;
 		case -1:	break;
 		default:	exit(-1);
-	}				
+	}
+	switch(param->mem_rdo) {
+                case 3:     cell.mem_rdo = Type::dro; break;
+                case 2:     cell.mem_rdo = Type::qndro;   break;
+		case 1:     cell.mem_rdo = Type::ndro;  break;
+                case -1:        break;
+                default:        exit(-1);
+        }
+	
 					
 	switch(param->transistortype) {
 		case 3:	    inputParameter.transistorType = TFET;          break;
@@ -139,6 +150,20 @@ void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParamet
 		cell.widthSRAMCellPMOS = param->widthSRAMCellPMOS;
 		cell.widthAccessCMOS = param->widthAccessCMOS;
 		cell.minSenseVoltage = param->minSenseVoltage;
+
+	} else if (cell.memCellType == Type::_2TnC) {
+		cell.heightInFeatureSize = param->heightInFeatureSize2TnC;         // Cell height in feature size
+                cell.widthInFeatureSize =  param->widthInFeatureSize2TnC;            // Cell width in feature size
+
+	} else if (cell.memCellType == Type::_1TnC) {
+                cell.heightInFeatureSize = param->heightInFeatureSize1TnC;         // Cell height in feature size
+                cell.widthInFeatureSize =  param->widthInFeatureSize1TnC;            // Cell width in feature size
+
+	} else if (cell.memCellType == Type::_1T1C) {
+                cell.heightInFeatureSize = param->heightInFeatureSize1T1C;         // Cell height in feature size
+                cell.widthInFeatureSize =  param->widthInFeatureSize1T1C;            // Cell width in feature size
+
+	
 	} else {
 		cell.heightInFeatureSize = (cell.accessType==CMOS_access)? param->heightInFeatureSize1T1R : param->heightInFeatureSizeCrossbar;         // Cell height in feature size
 		cell.widthInFeatureSize = (cell.accessType==CMOS_access)? param->widthInFeatureSize1T1R : param->widthInFeatureSizeCrossbar;            // Cell width in feature size
@@ -150,8 +175,13 @@ void ProcessingUnitInitialize(SubArray *& subArray, InputParameter& inputParamet
 	subArray->BNNsequentialMode = param->BNNsequentialMode;              
 	subArray->conventionalParallel = param->conventionalParallel;                  
 	subArray->conventionalSequential = param->conventionalSequential;                 
-	subArray->numRow = param->numRowSubArray;
-	subArray->numCol = param->numRowSubArray;
+	if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
+		subArray->numRow = param->numRowSubArrayPhysical;
+	} else {
+		subArray->numRow = param->numRowSubArray;
+	}
+	subArray->numCol = param->numColSubArray;
+	// subArray->numCol = param->numRowSubArray;
 	subArray->levelOutput = param->levelOutput;
 	subArray->numColMuxed = param->numColMuxed;               // How many columns share 1 read circuit (for neuro mode with analog RRAM) or 1 S/A (for memory mode or neuro mode with digital RRAM)
     subArray->clkFreq = param->clkFreq;                       // Clock frequency
@@ -355,6 +385,35 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 						subArrayLatencyOther = 0;
 
 						for (int k=0; k<numInVector; k++) {                 // calculate single subArray through the total input vectors
+							// 1. Default to false for ALL memory types
+							bool writeBack = false;
+							
+							if (cell.memCellType == Type::_1T1C) {
+								writeBack = true;
+							}
+							
+							// 2. Only track and trigger writebacks for 2T-nC devices
+							if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
+								if (cell.mem_rdo == Type::qndro) {
+							    		int WRITEBACKCYCLE = 100;
+
+							    		if ( ((k + 1) %  WRITEBACKCYCLE) == 0) {
+                                                            		         writeBack = true;
+                                                            		     }
+
+							    
+							    // Only increment for the absolute first physical block
+							    // if (i == 0 && j == 0 && firstProcessingUnit) {
+							    //     cellAccessTimes++;
+							    //     //if (cellAccessTimes >= WRITEBACKCYCLE) {
+							    //     if (((k+1) %  WRITEBACKCYCLE) == 0) {
+							    //         writeBack = true;
+							    //         cellAccessTimes = 0; // Reset after writeback
+							    //     }
+							    // }
+								}
+							}
+
 							double activityRowRead = 0;
 							vector<double> input; 
 							input = GetInputVector(subArrayInput, k, &activityRowRead);
@@ -370,13 +429,18 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 							vector<double> columnResistance;
 							columnResistance = GetColumnResistance(input, subArrayMemory, cell, param->parallelRead, subArray->resCellAccess);
 							
-							subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq);
+                                                        // if (i==0 && j==0){
+                                                        //          access_time += 1;
+                                                        //  }
+
+							// subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq, access_time);
+							subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq, writeBack);
 							if(CalculateclkFreq && (*clkPeriod < subArray->readLatency)){
 								*clkPeriod = subArray->readLatency;					//clk freq is decided by the longest sensing latency
 							}							
 							
 							if(!CalculateclkFreq){
-								subArray->CalculatePower(columnResistance);
+								subArray->CalculatePower(columnResistance, writeBack);
 								*readDynamicEnergy += subArray->readDynamicEnergy;
 								subArrayLeakage = subArray->leakage;
 								// Anni update: 
@@ -432,13 +496,32 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 			subArrayLatencyOther = 0;
 
 			for (int k=0; k<numInVector; k++) {                 // calculate single subArray through the total input vectors
-
 			
 				double activityRowRead = 0;
 				vector<double> input;
 				input = GetInputVector(subArrayInput, k, &activityRowRead);
 				subArray->activityRowRead = activityRowRead;
 				int cellRange = pow(2, param->cellBit);
+				
+				// 1. Default to false for ALL memory types
+                                bool writeBack = false;
+
+                                if (cell.memCellType == Type::_1T1C) {
+					writeBack = true;
+				}
+				
+				// 2. Only track and trigger writebacks for 2T-nC devices
+                                if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
+                                         if (cell.mem_rdo == Type::qndro) {         
+							int WRITEBACKCYCLE = 100;
+
+                                	         if ( ((k + 1) %  WRITEBACKCYCLE) == 0) {
+                                	                   writeBack = true;
+                                	         }
+					}
+				}
+
+				
 				
 				if (param->parallelRead) {
 					subArray->levelOutput = param->levelOutput;               // # of levels of the multilevelSenseAmp output
@@ -449,13 +532,13 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 				vector<double> columnResistance;
 				columnResistance = GetColumnResistance(input, subArrayMemory, cell, param->parallelRead, subArray->resCellAccess);
 				
-				subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq);
+				subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq, writeBack);
 				if(CalculateclkFreq && (*clkPeriod < subArray->readLatency)){
 					*clkPeriod = subArray->readLatency;					//clk freq is decided by the longest sensing latency
 				}
 				
 				if(!CalculateclkFreq){
-					subArray->CalculatePower(columnResistance);
+					subArray->CalculatePower(columnResistance, writeBack);
 					*readDynamicEnergy += subArray->readDynamicEnergy;
 					subArrayLeakage = subArray->leakage;
 					// Anni update: 
@@ -503,7 +586,25 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 						input = GetInputVector(subArrayInput, k, &activityRowRead);
 
 						subArray->activityRowRead = activityRowRead;
+
+						// 1. Default to false for ALL memory types
+                                                bool writeBack = false;
+
+                                               if (cell.memCellType == Type::_1T1C) {
+							writeBack = true;
+						}
 						
+						// 2. Only track and trigger writebacks for 2T-nC devices
+                                               if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
+                                                                if (cell.mem_rdo == Type::qndro) {
+                                               			         int WRITEBACKCYCLE = 100;
+
+                                               			         if ( ((k + 1) %  WRITEBACKCYCLE) == 0) {
+                                               			                   writeBack = true;
+                                               			         }
+					       			}
+					       }
+
 						int cellRange = pow(2, param->cellBit);
 						if (param->parallelRead) {
 							subArray->levelOutput = param->levelOutput;               // # of levels of the multilevelSenseAmp output
@@ -515,14 +616,14 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 						columnResistance = GetColumnResistance(input, subArrayMemory, cell, param->parallelRead, subArray->resCellAccess);
 
 						
-						subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq);
+						subArray->CalculateLatency(1e20, columnResistance, CalculateclkFreq, writeBack);
 						
 						if(CalculateclkFreq && (*clkPeriod < subArray->readLatency)){
 							*clkPeriod = subArray->readLatency;					//clk freq is decided by the longest sensing latency
 						}
 						
 						if(!CalculateclkFreq){
-							subArray->CalculatePower(columnResistance);
+							subArray->CalculatePower(columnResistance, writeBack);
 							*readDynamicEnergy += subArray->readDynamicEnergy;
 							subArrayLeakage = subArray->leakage;
 							// Anni update: 
@@ -721,6 +822,51 @@ vector<double> GetColumnResistance(const vector<double> &input, const vector<vec
 					columnG += 0;
 				}
 				
+			} else if (cell.memCellType == Type::_2TnC) {
+                                double totalWireResistance;
+                                if (cell.accessType == CMOS_access) {
+                                        totalWireResistance = (double) 1.0/weight[i][j] + (j + 1) * param->wireResistanceRow + (weight.size() - i) * param->wireResistanceCol + cell.resistanceAccess;
+                                } else {
+                                        totalWireResistance = (double) 1.0/weight[i][j] + (j + 1) * param->wireResistanceRow + (weight.size() - i) * param->wireResistanceCol;
+                                }
+                                if ((int) input[i] == 1) {
+                                        columnG += (double) 1.0/totalWireResistance;
+                                        activatedRow += 1 ;
+                                } else {
+                                        columnG += 0;
+                                }
+
+			} else if (cell.memCellType == Type::_1TnC) {
+                                double totalWireResistance;
+                                if (cell.accessType == CMOS_access) {
+                                        totalWireResistance = (double) 1.0/weight[i][j] + (j + 1) * param->wireResistanceRow + (weight.size() - i) * param->wireResistanceCol + cell.resistanceAccess;
+                                } else {
+                                        totalWireResistance = (double) 1.0/weight[i][j] + (j + 1) * param->wireResistanceRow + (weight.size() - i) * param->wireResistanceCol;
+                                }
+                                if ((int) input[i] == 1) {
+                                        columnG += (double) 1.0/totalWireResistance;
+                                        activatedRow += 1 ;
+                                } else {
+                                        columnG += 0;
+                                }
+
+			} else if (cell.memCellType == Type::_1T1C) {
+                                double totalWireResistance;
+                                if (cell.accessType == CMOS_access) {
+                                        totalWireResistance = (double) 1.0/weight[i][j] + (j + 1) * param->wireResistanceRow + (weight.size() - i) * param->wireResistanceCol + cell.resistanceAccess;
+                                } else {
+                                        totalWireResistance = (double) 1.0/weight[i][j] + (j + 1) * param->wireResistanceRow + (weight.size() - i) * param->wireResistanceCol;
+                                }
+                                if ((int) input[i] == 1) {
+                                        columnG += (double) 1.0/totalWireResistance;
+                                        activatedRow += 1 ;
+                                } else {
+                                        columnG += 0;
+                                }
+
+
+
+                        
 			} else if (cell.memCellType == Type::SRAM) {	
 				// SRAM: weight value do not affect sense energy --> read energy calculated in subArray.cpp (based on wireRes wireCap etc)
 				double totalWireResistance = (double) (resCellAccess + param->wireResistanceCol);
@@ -734,7 +880,7 @@ vector<double> GetColumnResistance(const vector<double> &input, const vector<vec
 		}
 		
 		// Anni update TODO: SRAM col resistance?
-		if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
+		if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET || cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC || cell.memCellType == Type::_1T1C) {
 			if (!parallelRead) {  
 				conductance.push_back((double) columnG/activatedRow);
 			} else {

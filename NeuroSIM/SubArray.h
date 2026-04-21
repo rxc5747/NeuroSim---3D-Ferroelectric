@@ -81,8 +81,8 @@ public:
 	void PrintProperty();
 	void Initialize(int _numRow, int _numCol, double _unitWireRes);
 	void CalculateArea();
-	void CalculateLatency(double _rampInput, const vector<double> &columnResistance, bool CalculateclkFreq);
-	void CalculatePower(const vector<double> &columnResistance);
+	void CalculateLatency(double _rampInput, const vector<double> &columnResistance, bool CalculateclkFreq, bool writeBack = false);
+	void CalculatePower(const vector<double> &columnResistance, bool writeBack = false);
 
 	/* Properties */	
 	bool initialized;	   // Initialization flag
@@ -110,6 +110,17 @@ public:
 	double resCellAccess;	// Resistance of access device, Unit: ohm
 	double capCellAccess;	// Capacitance of access device, Unit: ohm
 	double colDelay;	// Column delay, Unit: s
+
+	double capRSL;
+    	double capWBL;
+    	double capRBL;
+    	double capSSL;
+    	double capWPL;
+    	double capWWL;
+    	
+	double capWL;
+	double capPL;
+	double capBL;
 
 	double activityRowWrite;	// Activity for # of rows in the write
 	double activityColWrite;	// Activity for # of columns in the write
@@ -175,16 +186,38 @@ public:
 	LevelShifter			 wllevelshifter;
 	LevelShifter			 sllevelshifter;
 	LevelShifter			 bllevelshifter;
+	LevelShifter                     wblLevelShifter;
+        LevelShifter                     sslLevelShifter;
+        LevelShifter                     wwlLevelShifter;
+        LevelShifter                     wplLevelShifter;
+        LevelShifter                     wlLevelShifter;
+        LevelShifter                     blLevelShifter;
+        LevelShifter                     plLevelShifter;
 	RowDecoder               wlDecoder;
+	RowDecoder               blDecoder;
+	RowDecoder               plDecoder;
+	RowDecoder               wwlDecoder;
+	RowDecoder               wplDecoder;
+	RowDecoder               wblDecoder;
+	RowDecoder               rblDecoder;
+	RowDecoder               sslDecoder;
+	RowDecoder               rslDecoder;
 	WLDecoderOutput          wlDecoderOutput;
 	WLNewDecoderDriver       wlNewDecoderDriver;
 	NewSwitchMatrix          wlNewSwitchMatrix;
 	CurrentSenseAmp          rowCurrentSenseAmp;
 	Mux                      mux;
 	RowDecoder               muxDecoder;
+	SwitchMatrix             plSwitchMatrix;
 	SwitchMatrix             slSwitchMatrix;
 	SwitchMatrix             blSwitchMatrix;
 	SwitchMatrix             wlSwitchMatrix;
+	SwitchMatrix             sslSwitchMatrix;
+        SwitchMatrix             wblSwitchMatrix;
+        SwitchMatrix             wwlSwitchMatrix;
+	SwitchMatrix             wplSwitchMatrix;
+        SwitchMatrix             rblSwitchMatrix;
+        SwitchMatrix             rslSwitchMatrix;
 	DeMux                    deMux;
 	ReadCircuit              readCircuit;
 	Precharger               precharger;
@@ -197,6 +230,7 @@ public:
 	ShiftAdd                 shiftAddWeight;
 	MultilevelSenseAmp       multilevelSenseAmp;
 	MultilevelSAEncoder      multilevelSAEncoder;
+	CurrentSenseAmp		 currentSenseAmp;
 	SarADC                   sarADC;
 };
 

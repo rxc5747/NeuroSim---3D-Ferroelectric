@@ -58,10 +58,18 @@ Param::Param() {
 	operationmode = 2;     		// 1: conventionalSequential (Use several multi-bit RRAM as one synapse)
 								// 2: conventionalParallel (Use several multi-bit RRAM as one synapse)
 
-	memcelltype = 2;        	// 1: cell.memCellType = Type::SRAM
+	memcelltype = 6;        	// 1: cell.memCellType = Type::SRAM
 								// 2: cell.memCellType = Type::RRAM
 								// 3: cell.memCellType = Type::FeFET
 								// 4: cell.memCellType = Type::nvCap
+								// 5: cell.memCellType = Type::_2TnC
+								// 6: cell.memCellType = Type::_1TnC
+								// 7: cell.memCellType = Type::_1T1C
+	
+	mem_rdo = 3;         	// 1: cell.mem_rdo = Type::ndro
+								// 2: cell.mem_rdo = Type::qndro
+								// 3: cell.mem_rdo = Type::dro
+
 	
 	accesstype = 1;         	// 1: cell.accessType = CMOS_access
 								// 2: cell.accessType = BJT_access
@@ -99,15 +107,15 @@ Param::Param() {
 	novelMapping = true;        // false: conventional mapping (change to false for swin_t)
 								// true: novel mapping
 								
-	SARADC = false;              // false: MLSA
+	SARADC = true;              // false: MLSA
 	                            // true: sar ADC
 	currentMode = false;         // false: MLSA use VSA
 	                            // true: MLSA use CSA
 								// use VSA for nvCap
 	
-	pipeline = true;            // false: layer-by-layer process --> huge leakage energy in HP
+	pipeline = false;            // false: layer-by-layer process --> huge leakage energy in HP
 								// true: pipeline process
-	speedUpDegree = 8;          // 1 = no speed up --> original speed
+	speedUpDegree = 1;          // 1 = no speed up --> original speed
 								// 2 and more : speed up ratio, the higher, the faster
 								// A speed-up degree upper bound: when there is no idle period during each layer --> no need to further fold the system clock
 								// This idle period is defined by IFM sizes and data flow, the actual process latency of each layer may be different due to extra peripheries
@@ -202,8 +210,20 @@ Param::Param() {
 
 	outputtoggle = 0.5; // output bit toggling has a negligible portion of the interconnect energy. Set it to 50 % for simpliciity and generalizability for all neural network workloads.
 
-	numRowSubArray = 128;               // # of rows in single subArray
-	numColSubArray = 128;               // # of columns in single subArray
+	if (memcelltype == 5 || memcelltype == 6) {
+		numRowSubArrayPhysical = 64;	    // Actual # of rows in single subArray
+        	bitsPerCell = 64;		    // # of capacitors ('n' in 2TnC)
+        	numRowSubArray = numRowSubArrayPhysical * bitsPerCell;		
+
+		numColSubArray = 64;		    // # of columns in single subArray
+
+	} else {
+		numRowSubArrayPhysical = 512;
+		//numRowSubArray = 4096;               // # of rows in single subArray
+		numRowSubArray = 512;               // # of rows in single subArray
+        	numColSubArray = 512;               // # of columns in single subArray
+	}
+
 
 	// 230920 update
 
@@ -238,7 +258,12 @@ Param::Param() {
 	}
 	// Anni update
 	if (parallelRead) {
-		numRowParallel = numRowSubArray;	// user defined number: >1 and <=numRowSubArray
+		if (memcelltype == 5 || memcelltype == 6) {
+			numRowParallel = numRowSubArrayPhysical;        // user defined number: >1 and <=numRowSubArray
+		} else {
+			numRowParallel = numRowSubArrayPhysical;        // user defined number: >1 and <=numRowSubArray
+		}
+
 	} else {
 		numRowParallel = 1;
 	}
@@ -257,7 +282,8 @@ Param::Param() {
 	numColMuxed=numColPerSynapse;
 	}
 	
-	levelOutput = 128;                   // # of levels of the multilevelSenseAmp output, should be in 2^N forms; e.g. 32 levels --> 5-bit ADC
+	 levelOutput = 32;                   // # of levels of the multilevelSenseAmp output, should be in 2^N forms; e.g. 32 levels --> 5-bit ADC
+         // levelOutput = numRowSubArrayPhysical;                   // # of levels of the multilevelSenseAmp output, should be in 2^N forms; e.g. 32 levels --> 5-bit ADC
 	cellBit = 1;                        // precision of memory device 
 	// 1.4 update: dummy column sharing - how many senseamplfiers share one dummny columns?
 	// dummy column sharing should not be high, since it could change the column cap of the dummy column.
@@ -355,7 +381,7 @@ Param::Param() {
 	else if (technode == 65) {readVoltage=0.55;}
 	else if (technode == 45) {readVoltage=0.51;}
 	else if (technode == 32) {readVoltage=0.51;}
-	else if (technode == 22) {readVoltage=0.55;}
+	else if (technode == 22) {readVoltage=0.51;}
 	else if (technode == 14) {readVoltage=0.277;}
 	else if (technode == 10) {readVoltage=0.28;} 
 	else if (technode == 7) {readVoltage=0.264;}
@@ -382,6 +408,75 @@ Param::Param() {
 		chargeDelay = 5e-9;				// Time to transfer charges to Cref
 	}
 
+	if (memcelltype == 5) {         // for 2TnC  array
+                heightInFeatureSize2TnC = 4;       // 2TnC Cell height in feature size
+                widthInFeatureSize2TnC = 12;        // 2TnC Cell width in feature size
+                resistanceOn = 1e20;               // Ron resistance at Vr in the reported measurement data (need to recalculate below if considering the nonlinearity)
+                resistanceOff = 1e20*25;        // Roff resistance = Ron * onoff ratio
+                maxConductance = (double) 1/resistanceOn;
+                minConductance = (double) 1/resistanceOff;
+                accessVoltage = 1.2;                // Gate voltage for the transistor
+                chargeDelay = 5e-9;     		// Time to transfer charges to Cref
+		writePulseWidth = 10e-9;
+
+		readDisturbFactor = 1e-6;   // 0.0001% shift per read
+        	writeDisturbFactor = 1e-4;  // 0.01% shift per V/3 half-select
+
+		if (mem_rdo == 1) {
+			readVoltage = 0.1;
+		} else if (mem_rdo == 2) {
+			readVoltage = 1.2;
+		} else if (mem_rdo == 3) {
+			readVoltage = 2;
+		}
+        }
+
+	if (memcelltype == 6) {         // for 1TnC array
+    		    heightInFeatureSize1TnC = 4;       // 1TnC Cell height in feature size (pitch limited)
+    		    widthInFeatureSize1TnC = 4;        // 1TnC Cell width in feature size
+    		    resistanceOn = 1e20;               // Leakage resistance
+    		    resistanceOff = 1e20*25;
+    		    maxConductance = (double) 1/resistanceOn;
+    		    minConductance = (double) 1/resistanceOff;
+    		    readVoltage = 1.0;                 // Read voltage needs to be high enough to switch polarization
+    		    accessVoltage = 1.2;               // Gate voltage for the single transistor
+    		    chargeDelay = 5e-9;     		   // Time to dump charge onto BL
+    		    writePulseWidth = 10e-9;
+
+
+		    if (mem_rdo == 1) {
+                	        readVoltage = 0.1;
+                	} else if (mem_rdo == 2) {
+                	        readVoltage = 1.2;
+                	} else if (mem_rdo == 3) {
+                	        readVoltage = 2;
+                	}
+
+    	}
+	if (memcelltype == 7) {         // for 1T1C array
+                    heightInFeatureSize1T1C = 4;       // 1T1C Cell height in feature size (pitch limited)
+                    widthInFeatureSize1T1C = 4;        // 1T1C Cell width in feature size
+                    resistanceOn = 1e20;               // Leakage resistance
+                    resistanceOff = 1e20*25;
+                    maxConductance = (double) 1/resistanceOn;
+                    minConductance = (double) 1/resistanceOff;
+                    readVoltage = 1.0;                 // Read voltage needs to be high enough to switch polarization
+                    accessVoltage = 1.2;               // Gate voltage for the single transistor
+                    chargeDelay = 5e-9;                    // Time to dump charge onto BL
+                    writePulseWidth = 10e-9;
+
+                    if (mem_rdo == 1) {
+                                readVoltage = 0.1;
+                        } else if (mem_rdo == 2) {
+                                readVoltage = 1.2;
+                        } else if (mem_rdo == 3) {
+                                readVoltage = 2;
+                        }
+
+        }
+
+
+
 	/*** Calibration parameters ***/
 	if(validated){
 		alpha = 1.44;	// wiring area of level shifter
@@ -399,7 +494,7 @@ Param::Param() {
 	/***************************************** Initialization of parameters NO need to modify *****************************************/
 	
 	if (memcelltype == 1) {
-		cellBit = 1;             // force cellBit = 1 for all SRAM cases
+		cellBit = 1;             // force cellBit = 8 for all SRAM cases
 	} 
 	
 

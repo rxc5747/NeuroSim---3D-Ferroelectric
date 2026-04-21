@@ -72,8 +72,8 @@ int main(int argc, char * argv[]) {
     // define weight/input/memory precision from wrapper
     param->synapseBit = atoi(argv[2]);              // precision of synapse weight
     param->numBitInput = atoi(argv[3]);             // precision of input neural activation
-    param->numRowSubArray = atoi(argv[4]);             // number row of subarray
-    param->numRowParallel = atoi(argv[5]);             // number of enabled rows of subarray (partial parallel mode)
+    // param->numRowSubArray = atoi(argv[4]);             // number row of subarray
+    // param->numRowParallel = atoi(argv[5]);             // number of enabled rows of subarray (partial parallel mode)
 
 
     if (param->cellBit > param->synapseBit) {
@@ -165,6 +165,10 @@ int main(int argc, char * argv[]) {
     markNM = ChipDesignInitialize(inputParameter, tech, cell, false, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
     pipelineSpeedUp = ChipDesignInitialize(inputParameter, tech, cell, true, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
     
+    // maxPESizeNM = 65536;
+    // maxTileSizeCM = 131072;
+    
+
     double desiredNumTileNM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM;
     int numTileRow, numTileCol;
     

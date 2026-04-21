@@ -729,6 +729,8 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	// Anni update
 	double tileLeakageSRAMInUse = 0;
 
+	int totalInput=0;
+
 	// Anni update: update Clock frequency
 	if(!CalculateclkFreq) {	
 		globalBuffer->clkFreq = param->clkFreq; 
@@ -744,18 +746,27 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	
 	// 230920 update
 	int totalNumTile = 0;
-	int totalInput=0; 
+	totalInput=0; 
 
 	for (int i=0; i<netStructure.size(); i++) {
 		totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
-		if (markNM[l]==0){
-			totalInput += netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+		if (markNM[i]==0){
+			totalInput += netStructure[i][2]*netStructure[i][3]*netStructure[i][4] * (netStructure[i][0]-netStructure[i][3]+1)/netStructure[i][7]*(netStructure[i][1]-netStructure[i][4]+1)/netStructure[i][7];
 		}
 		else {
-			totalInput += netStructure[l][2]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+			totalInput += netStructure[i][2]*netStructure[i][4] * (netStructure[i][0]-netStructure[i][3]+1)/netStructure[i][7]*(netStructure[i][1]-netStructure[i][4]+1)/netStructure[i][7];
 		}	
-	
 	}
+	//for (int i=0; i<netStructure.size(); i++) {
+	//	totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
+	//	if (markNM[l]==0){
+	//		totalInput += netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+	//	}
+	//	else {
+	//		totalInput += netStructure[l][2]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+	//	}	
+	//
+	//}
 	// Anni update:
 	double totalnumTileRow = ceil((double)sqrt(totalNumTile));
 	double totalnumTileCol = ceil((double)(totalNumTile)/(double)(totalnumTileRow));																			 
@@ -765,6 +776,8 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 			for (int j=0; j<ceil((double) netStructure[l][5]*(double) numColPerSynapse/(double) desiredTileSizeCM); j++) {   // # of tiles in Column
 				
 				
+				bool firstTile = (i == 0 && j == 0); // Identify the first tile
+
 				double tileReadLatency = 0;
 				double tileReadDynamicEnergy = 0;
 				double tilebufferLatency = 0;
@@ -885,10 +898,10 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 				// 230920 update
 				double fraction = netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
 
-				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/floor(GhTree->busWidth*(fraction/totalInput))));
+				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/ceil(GhTree->busWidth*(fraction/totalInput))));
 				else GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], CMTileheight, CMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile))));
 				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculatePower(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil(GhTree->busWidth*(fraction/totalInput)), 
-							ceil((numBitToLoadOut*param->inputtoggle)/floor(GhTree->busWidth*(fraction/totalInput) )) + ceil((numBitToLoadIn*param->outputtoggle)/floor(GhTree->busWidth*(fraction/totalInput) ) ) );
+							ceil((numBitToLoadOut*param->inputtoggle)/ceil(GhTree->busWidth*(fraction/totalInput) )) + ceil((numBitToLoadIn*param->outputtoggle)/ceil(GhTree->busWidth*(fraction/totalInput) ) ) );
 				else GhTree->CalculatePower(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], CMTileheight, CMTilewidth, ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile)), 
 							ceil((numBitToLoadOut*param->inputtoggle)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile) )) + ceil((numBitToLoadIn*param->outputtoggle)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile) ) ) );
 				
@@ -934,6 +947,9 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	} else {   // novel Mapping
 		for (int i=0; i<ceil((double) netStructure[l][2]*(double) numRowPerSynapse/(double) desiredPESizeNM); i++) {       // # of tiles in row
 			for (int j=0; j<ceil((double) netStructure[l][5]*(double) numColPerSynapse/(double) desiredPESizeNM); j++) {   // # of tiles in Column
+				
+				bool firstTile = (i == 0 && j == 0); // Identify the first tile
+				
 				double tileReadLatency = 0;
 				double tileReadDynamicEnergy = 0;
 				double tilebufferLatency = 0;
@@ -1056,11 +1072,11 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 				// 230920 update
 				double fraction = netStructure[l][2]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
 				
-				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/floor(GhTree->busWidth*(fraction/totalInput))));
+				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/ceil(GhTree->busWidth*(fraction/totalInput))));
 				else GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile))));
 
 				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculatePower(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil(GhTree->busWidth*(fraction/totalInput)), 
-																ceil((numBitToLoadOut*param->inputtoggle)/floor(GhTree->busWidth*(fraction/totalInput))) + ceil((numBitToLoadIn*param->outputtoggle)/floor(GhTree->busWidth*(fraction/totalInput))));
+																ceil((numBitToLoadOut*param->inputtoggle)/ceil(GhTree->busWidth*(fraction/totalInput))) + ceil((numBitToLoadIn*param->outputtoggle)/ceil(GhTree->busWidth*(fraction/totalInput))));
 				else GhTree->CalculatePower(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile)), 
 																ceil((numBitToLoadOut*param->inputtoggle)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile))) + ceil((numBitToLoadIn*param->outputtoggle)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile))));
 				// GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/GhTree->busWidth));
@@ -1181,6 +1197,17 @@ vector<vector<double> > PEDesign(bool Design, double peSize, double desiredTileS
 	double utilization = 0;
 	vector<double> peDupRow;
 	vector<double> peDupCol;
+	
+	// for (int i=0; i<netStructure.size(); i++) {
+	// 	int actualDupRow = 1;
+	// 	int actualDupCol = 1;
+	// 	
+	// 	matrixTotalCM += actualDupRow*actualDupCol*netStructure[i][2]*netStructure[i][3]*netStructure[i][4]*numRowPerSynapse*netStructure[i][5]*numColPerSynapse;
+
+	// 	peDupRow.push_back(actualDupRow);
+	// 	peDupCol.push_back(actualDupCol);
+	// }
+	
 	for (int i=0; i<netStructure.size(); i++) {
 		int actualDupRow = 0;
 		int actualDupCol = 0;
@@ -1235,6 +1262,15 @@ vector<vector<double> > SubArrayDup(double desiredPESizeCM, double desiredPESize
 	vector<double> subArrayDupRow;
 	vector<double> subArrayDupCol;
 	
+ 	// for (int i=0; i<netStructure.size(); i++) {
+	// 	int actualDupRow = 1;
+	// 	int actualDupCol = 1;
+	// 	
+	// 	subArrayDupRow.push_back(actualDupRow);
+	// 	subArrayDupCol.push_back(actualDupCol);
+	// }
+
+
 	for (int i=0; i<netStructure.size(); i++) {
 		int actualDupRow = 0;
 		int actualDupCol = 0;

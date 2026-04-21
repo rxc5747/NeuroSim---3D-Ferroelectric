@@ -54,6 +54,8 @@ SubArray::SubArray(InputParameter& _inputParameter, Technology& _tech, MemCell& 
 						wllevelshifter(_inputParameter, _tech, _cell),
 						sllevelshifter(_inputParameter, _tech, _cell),
 						bllevelshifter(_inputParameter, _tech, _cell),
+						blDecoder(_inputParameter, _tech, _cell),
+						plDecoder(_inputParameter, _tech, _cell),
 						wlDecoder(_inputParameter, _tech, _cell),
 						wlDecoderOutput(_inputParameter, _tech, _cell),
 						wlNewDecoderDriver(_inputParameter, _tech, _cell),
@@ -74,8 +76,29 @@ SubArray::SubArray(InputParameter& _inputParameter, Technology& _tech, MemCell& 
 						dff(_inputParameter, _tech, _cell),
 						shiftAddInput(_inputParameter, _tech, _cell),
 						shiftAddWeight(_inputParameter, _tech, _cell),
+						currentSenseAmp(_inputParameter, _tech, _cell),
 						multilevelSenseAmp(_inputParameter, _tech, _cell),
 						multilevelSAEncoder(_inputParameter, _tech, _cell),
+						plSwitchMatrix(_inputParameter, _tech, _cell),
+						wplSwitchMatrix(_inputParameter, _tech, _cell),
+						rslSwitchMatrix(_inputParameter, _tech, _cell),
+						rblSwitchMatrix(_inputParameter, _tech, _cell),
+						sslSwitchMatrix(_inputParameter, _tech, _cell),
+                                                wblSwitchMatrix(_inputParameter, _tech, _cell),
+                                                wwlSwitchMatrix(_inputParameter, _tech, _cell),
+						wwlDecoder(_inputParameter, _tech, _cell),
+						wplDecoder(_inputParameter, _tech, _cell),
+						wblDecoder(_inputParameter, _tech, _cell),
+						rslDecoder(_inputParameter, _tech, _cell),
+						rblDecoder(_inputParameter, _tech, _cell),
+						sslDecoder(_inputParameter, _tech, _cell),
+						blLevelShifter(_inputParameter, _tech, _cell),
+						wblLevelShifter(_inputParameter, _tech, _cell),
+                        			sslLevelShifter(_inputParameter, _tech, _cell),
+                        			wlLevelShifter(_inputParameter, _tech, _cell),
+                        			wwlLevelShifter(_inputParameter, _tech, _cell),
+                        			plLevelShifter(_inputParameter, _tech, _cell),
+                        			wplLevelShifter(_inputParameter, _tech, _cell),
 						sarADC(_inputParameter, _tech, _cell){
 	initialized = false;
 	readDynamicEnergyArray = writeDynamicEnergyArray = 0;
@@ -83,9 +106,17 @@ SubArray::SubArray(InputParameter& _inputParameter, Technology& _tech, MemCell& 
 
 void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //initialization module
 	
-	numRow = _numRow;    // import parameters
+	//numRow = _numRow;    // import parameters
+	
+	if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
+		numRow = param->numRowSubArrayPhysical; 
+	} else {
+		numRow = _numRow;    // import parameters
+	}
+
 	numCol = _numCol;
 	unitWireRes = _unitWireRes;
+	double bitsPerCell = param->bitsPerCell;
 	
 	double MIN_CELL_HEIGHT = MAX_TRANSISTOR_HEIGHT;  //set real layout cell height
 	double MIN_CELL_WIDTH = (MIN_GAP_BET_GATE_POLY + POLY_WIDTH) * 2;  //set real layout cell width
@@ -160,6 +191,500 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 		param->arrayheight = (double)numRow * cell.heightInFeatureSize * cell.featureSize;
 
 
+	} else if (cell.memCellType == Type::_2TnC) {
+                // 2TnC Initialization
+                // double cellHeight = cell.heightInFeatureSize;
+                // double cellWidth = cell.widthInFeatureSize;
+
+                //Calculate Array Dimensions
+                // if (relaxArrayCellWidth) {
+                //      lengthRow = (double)numCol * MAX(cellWidth, MIN_CELL_WIDTH*2) * tech.featureSize;
+                // } else {
+                //      lengthRow = (double)numCol * cellWidth * tech.featureSize;
+                // }
+
+                // if (relaxArrayCellHeight) {
+                //      lengthCol = (double)numRow * MAX(cellHeight, MIN_CELL_HEIGHT) * tech.featureSize;
+                // } else {
+                //      lengthCol = (double)numRow * cellHeight * tech.featureSize;
+                // }
+
+
+                // Calculate Parasitics
+                // double gateCap = CalculateGateCap(cell.widthAccessCMOS * tech.featureSize, tech);
+		
+		// Cgate = (2 * pi * epsilon_ox * L_g) / ln(1 + (tox/r)) 
+		// r_wire = 4e-9 // 4nm nanowire radius
+		// t_ox = 1.2e-9 // 1.2nm oxide thickness
+		// L_g = 22e-9   // 22nm gate length
+		// eps_ox = 3.9 * 8.85e-12 // SiO2 permittivity 
+
+                double gateCap = 0.017e-15;
+                double drainCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech);
+		double sourceCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech);
+
+
+                // 3D 2T-nC WBL GEOMETRY CALCULATION
+
+                // 1. Define Dimensions (in m)
+                double tFE = 5e-9;          // FE thickness
+                double rString = 40e-9;     // String radius (XY)
+                double distString = 40e-9;  // String interval (XY)
+                double tWBL = 40e-9;        // WBL thickness (Z)
+                double distWBL = 20e-9;     // WBL interval (Z) - Spacing between layers
+
+                // Calculate Pitch (Unit Cell Size)
+                // Pitch = Diameter of String + Spacing (Footprint per cell)
+                double pitch3D = (2 * rString) + distString;
+
+		// 2. Override Array Dimensions for 3D
+        	// In 3D Vertical arrays, the "Cell Width/Height" is the pillar pitch
+        	// We ignore relaxArrayCellWidth for 3D as it's pitch-limited
+        	lengthRow = (double)numCol * pitch3D;
+        	lengthCol = (double)numRow * pitch3D;
+
+		// Update global params for the array size
+        	param->arraywidthunit = pitch3D;
+        	param->arrayheight = lengthCol;
+
+		// 3. WBL Calculations
+		// 3D WBL Resistance
+        	double rho = 10e-8;
+        	double holeDiameter = 2 * (rString + tFE);  //Hole Diameter includes the FE layer thickness around the string 
+        	double effectiveWidth = pitch3D - holeDiameter; //Effective Width = Pitch - Hole Diameter (The narrowest path for current)
+        	double resPerCellWBL = rho * (pitch3D / (effectiveWidth * tWBL));  //Resistance = Rho * (Length / Area_cross_section)
+
+        	// 3D WBL Capacitance  (Parasitic + Cell)
+        	double areaUnitCell = pitch3D * pitch3D;
+        	double areaHole = 3.14159 * pow(rString + tFE, 2);
+        	double areaMetal = areaUnitCell - areaHole;  //Area of Metal Plane = (Pitch^2) - (Area of Hole)
+        	double epsilonOxide = 3.9 * 8.85e-12;
+        	double capCouplingPerCell = epsilonOxide * areaMetal / distWBL;
+        	double capParasiticWBL = 2 * capCouplingPerCell * numCol; // Multiply by 2 because it couples to BOTH the layer above and below
+										   // capParasiticWBL is the single cell capacitance, so we multiply it with numCol * numRow
+
+		// Cell Capacitance (FeCAP)
+        	double epsilonFE = 25 * 8.85e-12;
+        	double capCell3D = (2 * 3.14159 * epsilonFE * tWBL) / log((rString + tFE) / rString);
+        	double capWBLTotal = capParasiticWBL + (capCell3D * numCol);
+
+
+                //double resRowWBL = resPerCellWBL * numCol;
+
+		// 4. 3D Via & Crossing Caps 
+        	// Defined trans_height as 2D feature size approx
+        	double trans_height = 2 * MAX_TRANSISTOR_HEIGHT * tech.featureSize; // Write and Read Transistors
+        	double distSSL = 200e-9;
+		double distRSL = 100e-9;
+		double viaHeight = ((tWBL + distWBL) * bitsPerCell) + distSSL + distRSL + trans_height;  // Height: Must span all 8 layers + spacing
+        	double viaRadius = 40e-9;  // Same as String Radius
+
+        	// RBL Crossing (Top)
+        	double areaOverlap = (tech.featureSize * tech.featureSize);
+        	double capCrossingRBL = epsilonOxide * areaOverlap / viaHeight;
+        	double totalCapCrossRBL = (3 * capCrossingRBL);
+
+        	// RSL Crossing (Top)
+        	double capCrossingRSL = epsilonOxide * areaOverlap / viaHeight;
+        	double totalCapCrossRSL = (3 * capCrossingRSL);
+
+        	// WBL Coupling (Middle)
+        	double h_coupling = tWBL;
+        	double r_inner = rString;
+        	double r_outer = rString + tFE;
+        	double capCouplingPerPillar = (2 * 3.14159 * epsilonOxide * h_coupling) / log(r_outer / r_inner);
+        	double totalCapCrossWBL = (2 * capCouplingPerPillar) * numCol;
+
+        	// Summing total crossing cap for general line usage
+        	double totalCrossingCapPerCol = totalCapCrossRSL + totalCapCrossRSL + totalCapCrossWBL;
+
+        	// 5. Final Capacitance Assignments
+		// WPL (Source Connected) - capCol
+		capWPL = lengthRow * 0.2e-15/1e-6 + (sourceCap * numCol);
+
+        	// WWL (Gate connected) - capColGate
+        	capWWL = lengthRow * 0.2e-15/1e-6 + (gateCap * numCol);
+
+        	// SSL (Source Select) - capRow1
+        	capSSL = lengthCol * 0.2e-15/1e-6 + (sourceCap * numRow);
+
+        	// WBL (Plates)
+        	capWBL = lengthRow * 0.2e-15/1e-6 + (capWBLTotal + totalCapCrossWBL);
+
+        	// RSL (Top Select)
+        	double wireCapCol = lengthCol * 0.2e-15/1e-6;
+        	capRSL = wireCapCol + ((sourceCap + totalCapCrossRSL) * numRow);
+        	
+		// RBL 
+		double DrainCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, pitch3D, tech);
+		capRBL = lengthRow * 0.2e-15/1e-6 + ((DrainCap + totalCapCrossRBL) * numCol);
+
+        	resRow = lengthRow * unitWireRes;
+        	resCol = lengthCol * unitWireRes;
+
+
+		double unitcap= capRBL/param->numColSubArray;
+                double unitres= resRow/param->numColSubArray;
+                param->unitcap = unitcap;
+                param->unitres = unitres;
+
+		param->columncap = capRSL;
+
+
+                // Define Transmission Gate Resistance for Switch Matrices
+                //double resTg = cell.resMemCellOn;
+
+	
+	
+	} else if (cell.memCellType == Type::_1TnC) {
+        	double gateCap = 0.017e-15;
+                double drainCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech);
+                double sourceCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech);
+
+                // 3D 2T-nC WBL GEOMETRY CALCULATION
+                // 1. Define Dimensions (in m)
+                double tFE = 5e-9;          // FE thickness
+                double rString = 40e-9;     // String radius (XY)
+                double distString = 40e-9;  // String interval (XY)
+                double tWBL = 40e-9;        // WBL thickness (Z)
+                double distWBL = 20e-9;     // WBL interval (Z) - Spacing between layers
+
+                // Calculate Pitch (Unit Cell Size)
+                // Pitch = Diameter of String + Spacing (Footprint per cell)
+                double pitch3D = (2 * rString) + distString;
+
+                // 2. Override Array Dimensions for 3D
+                // In 3D Vertical arrays, the "Cell Width/Height" is the pillar pitch
+                // We ignore relaxArrayCellWidth for 3D as it's pitch-limited
+                lengthRow = (double)numCol * pitch3D;
+                lengthCol = (double)numRow * pitch3D;
+
+                // Update global params for the array size
+                param->arraywidthunit = pitch3D;
+                param->arrayheight = lengthCol;
+
+		// Update global params for the array size
+                param->arraywidthunit = pitch3D;
+                param->arrayheight = lengthCol;
+
+                // 3. WBL Calculations
+                // 3D WBL Resistance
+                double rho = 10e-8;
+                double holeDiameter = 2 * (rString + tFE);  //Hole Diameter includes the FE layer thickness around the string
+                double effectiveWidth = pitch3D - holeDiameter; //Effective Width = Pitch - Hole Diameter (The narrowest path for current)
+                double resPerCellWBL = rho * (pitch3D / (effectiveWidth * tWBL));  //Resistance = Rho * (Length / Area_cross_section)
+
+                // 3D WBL Capacitance  (Parasitic + Cell)
+                double areaUnitCell = pitch3D * pitch3D;
+                double areaHole = 3.14159 * pow(rString + tFE, 2);
+                double areaMetal = areaUnitCell - areaHole;  //Area of Metal Plane = (Pitch^2) - (Area of Hole)
+                double epsilonOxide = 3.9 * 8.85e-12;
+                double capCouplingPerCell = epsilonOxide * areaMetal / distWBL;
+                double capParasiticWBL = 2 * capCouplingPerCell * numCol; //Multiply by 2 because it couples to BOTH the layer above and below
+
+                // Cell Capacitance (FeCAP)
+                double epsilonFE = 25 * 8.85e-12;
+                double capCell3D = (2 * 3.14159 * epsilonFE * tWBL) / log((rString + tFE) / rString);
+                double capWBLTotal = capParasiticWBL + (capCell3D * numCol);
+                // double capWBLTotal = capParasiticWBL;
+
+
+                //double resRowWBL = resPerCellWBL * numCol;
+
+		// PL 
+                capPL = lengthCol * 0.2e-15/1e-6 + (sourceCap * numRow);
+
+                // WL 
+                capWL = lengthRow * 0.2e-15/1e-6 + (gateCap * numCol);
+
+                // BL (Plates)
+                capBL = lengthRow * 0.2e-15/1e-6 + (capWBLTotal);
+
+        	resRow = lengthRow * unitWireRes;
+        	resCol = lengthCol * unitWireRes;
+
+		double unitcap= capPL/param->numColSubArray;
+                double unitres= resRow/param->numColSubArray;
+                param->unitcap = unitcap;
+                param->unitres = unitres;
+
+                param->columncap = capPL;
+
+
+        	if (cell.mem_rdo == Type::ndro) {
+
+                           // 1. Calculate the capacitive load at the internal node (Gate of Tr)
+                           //double cGateTr = CalculateGateCap(cell.widthAccessCMOS * tech.featureSize, tech);
+                           double cGateTr = 0.017e-15;
+
+                           // Define FeCap parameters
+                           // These represent the switching capacitance differences.
+                           double capFeOn = 10e-15;  // High switching capacitance (State '0')
+                           double capFeOff = 2e-15;  // Low switching capacitance (State '1')
+
+                           // 2. Voltage Coupling: Calculate V_int (Gate Voltage) for both states
+                           double vGateOn = cell.readVoltage * (capFeOn / (capFeOn + cGateTr));
+                           double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+
+                           // 3. Extract Transistor parameters for physics equations
+
+                           //Add custom values, tech is not the same
+                           //double muCox = tech.mobility * tech.cox;
+                           double muCox = 150e-6;
+                           double w_l = cell.widthAccessCMOS;
+                           //double vTh = tech.vth;
+                           double vTh = 0.3;
+                           double vT = 0.026; // Thermal voltage at room temp (kT/q)
+
+                           // 4. Calculate "On" State Resistance (Linear Region of Tr)
+                           if (vGateOn > vTh) {
+                               cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+                           } else {
+                               cell.resMemCellOn = 1e9; // Fallback to High-Z if it doesn't turn on
+                           }
+
+                           // 5. Calculate "Off" State Resistance (Subthreshold Leakage of Tr)
+                           double n_factor = 1.2; // Subthreshold swing factor
+                           double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+
+                           cell.resMemCellOff = cell.readVoltage / iSubOff;
+
+		} else if (cell.mem_rdo == Type::qndro) {
+
+                           // 1. In QNDR, the read voltage is high enough to flip the domain, dumping
+                           // the full polarization charge onto the gate. This is represented with a massive capFeOn.
+
+                           double cGateTr = 0.017e-15;
+
+                           // QNDR Parameters
+                           double capFeOn_QNDR = 40e-15;  // Massive effective switching capacitance
+                           double capFeOff = 2e-15;       // Unswitched state (dielectric only)
+
+                           // 2. Calculate Voltage Divider
+                           double vGateOn = cell.readVoltage * (capFeOn_QNDR / (capFeOn_QNDR + cGateTr));
+                           double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+
+                           // 3. Extract Transistor parameters for physics equations
+
+                           //Add custom values, tech is not the same
+                           //double muCox = tech.mobility * tech.cox;
+                           double muCox = 150e-6;
+                           double w_l = cell.widthAccessCMOS;
+                           //double vTh = tech.vth;
+                           double vTh = 0.3;
+                           double vT = 0.026; // Thermal voltage at room temp (kT/q)
+
+                           // 4. Calculate "On" State Resistance (Linear Region of Tr)
+                           if (vGateOn > vTh) {
+                               cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+                           } else {
+                               cell.resMemCellOn = 1e9; // Fallback to High-Z if it doesn't turn on
+                           }
+
+                           // 5. Calculate "Off" State Resistance (Subthreshold Leakage of Tr)
+                           double n_factor = 1.2; // Subthreshold swing factor
+                           double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+
+                           cell.resMemCellOff = cell.readVoltage / iSubOff;
+
+              } else if (cell.mem_rdo == Type::dro) {
+
+		           // 1. In DR, the read voltage is high enough to flip the domain, dumping
+                           // the full polarization charge onto the gate. This is represented with a massive capFeOn.
+
+                           double cGateTr = 0.017e-15;
+
+                           // DR Parameters
+                           double capFeOn_DR = 80e-15;  // Massive effective switching capacitance
+                           double capFeOff = 2e-15;       // Unswitched state (dielectric only)
+
+                           // 2. Calculate Voltage Divider
+                           double vGateOn = cell.readVoltage * (capFeOn_DR / (capFeOn_DR + cGateTr));
+                           double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+
+                           // 3. Extract Transistor parameters for physics equations
+
+                           //Add custom values, tech is not the same
+                           //double muCox = tech.mobility * tech.cox;
+                           double muCox = 150e-6;
+                           double w_l = cell.widthAccessCMOS;
+                           //double vTh = tech.vth;
+                           double vTh = 0.3;
+                           double vT = 0.026; // Thermal voltage at room temp (kT/q)
+
+                           // 4. Calculate "On" State Resistance (Linear Region of Tr)
+                           if (vGateOn > vTh) {
+                               cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+                           } else {
+                               cell.resMemCellOn = 1e9; // Fallback to High-Z if it doesn't turn on
+                           }
+
+                           // 5. Calculate "Off" State Resistance (Subthreshold Leakage of Tr)
+                           double n_factor = 1.2; // Subthreshold swing factor
+                           double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+
+                           cell.resMemCellOff = cell.readVoltage / iSubOff;
+              }
+
+                double res_equivalent =  (cell.resMemCellOff * cell.resMemCellOn) / (cell.resMemCellOff + cell.resMemCellOn);
+		double resTg = CalculateOnResistance(tech.featureSize * 2, NMOS, inputParameter.temperature, tech);
+
+		// 3. Initialize Drivers
+
+        	// WL (Wordline) - Physical Rows
+        	wlDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow)), false, false);
+                wlSwitchMatrix.Initialize(ROW_MODE, numRow, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+        	// PL (Plateline) - Cols (Physical)
+        	plDecoder.Initialize(REGULAR_COL, (int)ceil(log2(numCol)), false, false);
+                plSwitchMatrix.Initialize(COL_MODE, numCol, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+        	// BL (Bitline) - Plane (Rows)
+                blDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(bitsPerCell)), false, false);
+                blSwitchMatrix.Initialize(ROW_MODE, bitsPerCell, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+
+        	// Initialize Matrices
+                //double resTg = cell.resMemCellAvg / numRow;
+
+                if (cell.writeVoltage > 1.5) {
+                        //BL Level Shifter (Row Plane - Horizontal)
+                        blLevelShifter.Initialize(bitsPerCell, activityRowWrite, clkFreq);
+
+                        //WL Level Shifter (Row)
+                        wlLevelShifter.Initialize(numRow, activityRowWrite, clkFreq);
+
+                        //PL Level Shifter (Column)
+                        plLevelShifter.Initialize(numCol, activityColWrite, clkFreq);
+                }
+
+		
+		if (numColMuxed>1) {
+                                //mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, res_equivalent, FPGA);
+                                mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);
+                                muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
+                        }
+                        if (param->SARADC) {
+                                sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
+                        } else {
+                                multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
+                                multilevelSAEncoder.Initialize(levelOutput, numCol/numColMuxed);
+                        }
+
+                        currentSenseAmp.Initialize(numCol, false, false, clkFreq, 1);
+
+                        if (numCellPerSynapse > 1) {
+                                shiftAddWeight.Initialize(ceil(numCol/numColMuxed), log2(levelOutput), clkFreq, spikingMode, numCellPerSynapse);
+                        }
+                        if (numReadPulse > 1) {
+                                shiftAddInput.Initialize(ceil(numCol/numColMuxed), log2(levelOutput)+numCellPerSynapse, clkFreq, spikingMode, numReadPulse);
+                        }
+
+			if (numAdd > 1) {
+                                int adderBit = log2(levelOutput) + ceil(log2(numAdd));
+                                int numAdder = ceil(numCol/numColMuxed);
+                                dff.Initialize(adderBit*numAdder, clkFreq);
+                                adder.Initialize(adderBit-1, numAdder, clkFreq);
+                        }
+
+
+		
+        	//precharger.Initialize(numCol, resCol, activityColWrite, numReadCellPerOperationNeuro, numWriteCellPerOperationNeuro);
+	
+	} else if (cell.memCellType == Type::_1T1C) {
+        		// Standard 2D 1T1C Array (No 3D Stacking)
+        		double cellHeight = cell.heightInFeatureSize;
+        		double cellWidth = cell.widthInFeatureSize;
+
+        		if (relaxArrayCellWidth) {
+        		    lengthRow = (double)numCol * MAX(cellWidth, MIN_CELL_WIDTH*2) * tech.featureSize;
+        		} else {
+        		    lengthRow = (double)numCol * cellWidth * tech.featureSize;
+        		}
+        		if (relaxArrayCellHeight) {
+        		    lengthCol = (double)numRow * MAX(cellHeight, MIN_CELL_HEIGHT) * tech.featureSize;
+        		} else {
+        		    lengthCol = (double)numRow * cellHeight * tech.featureSize;
+        		}
+
+        		param->arraywidthunit = cellWidth * tech.featureSize;
+        		param->arrayheight = (double)numRow * cellHeight * tech.featureSize;
+
+        		// Parasitics
+        		double gateCap = CalculateGateCap(cell.widthAccessCMOS * tech.featureSize, tech);
+        		double drainCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech);
+        		double sourceCap = CalculateDrainCap(cell.widthAccessCMOS * tech.featureSize, NMOS, cell.widthInFeatureSize * tech.featureSize, tech);
+
+        		// WL (Rows - Gates)
+        		capWL = lengthRow * 0.2e-15/1e-6 + (gateCap * numCol);
+        		// BL (Cols - Drains/Capacitors)
+        		capBL = lengthCol * 0.2e-15/1e-6 + (drainCap * numRow);
+
+        		resRow = lengthRow * unitWireRes;
+        		resCol = lengthCol * unitWireRes;
+
+        		param->unitcap = capBL / param->numColSubArray;
+        		param->unitres = resCol / param->numRowSubArray;
+        		param->columncap = capBL;
+
+        		// Tr Resistance Calculations
+        		double cGateTr = gateCap;
+        		double capFeOn = 10e-15;  
+        		double capFeOff = 2e-15;  
+        		double vGateOn = cell.readVoltage * (capFeOn / (capFeOn + cGateTr));
+        		double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+        		
+        		double muCox = 150e-6;
+        		double w_l = cell.widthAccessCMOS;
+        		double vTh = 0.3;
+        		double vT = 0.026; 
+
+        		if (vGateOn > vTh) {
+        		    cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+        		} else {
+        		    cell.resMemCellOn = 1e9; 
+        		}
+        		double n_factor = 1.2; 
+        		double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+        		cell.resMemCellOff = cell.readVoltage / iSubOff;
+
+        		// Initialize Peripheral Drivers (Reduced count for 1T1C)
+        		double resTg = CalculateOnResistance(tech.featureSize * 2, NMOS, inputParameter.temperature, tech);
+
+        		// WL (Row Mode)
+        		wlDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow)), false, false);
+        		wlSwitchMatrix.Initialize(ROW_MODE, numRow, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+        		// BL (Col Mode - Vertical down the array)
+        		blDecoder.Initialize(REGULAR_COL, (int)ceil(log2(numCol)), false, false);
+        		blSwitchMatrix.Initialize(COL_MODE, numCol, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+        		if (cell.writeVoltage > 1.5) {
+        		    wlLevelShifter.Initialize(numRow, activityRowWrite, clkFreq);
+        		    blLevelShifter.Initialize(numCol, activityColWrite, clkFreq);
+        		}
+
+        		// Readout Circuits
+        		if (numColMuxed > 1) {
+        		    mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);
+        		    muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
+        		}
+        		if (param->SARADC) {
+        		    sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
+        		} else {
+        		    multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
+        		    multilevelSAEncoder.Initialize(levelOutput, numCol/numColMuxed);
+        		}
+        		currentSenseAmp.Initialize(numCol, false, false, clkFreq, 1);
+
+        		if (numCellPerSynapse > 1) shiftAddWeight.Initialize(ceil(numCol/numColMuxed), log2(levelOutput), clkFreq, spikingMode, numCellPerSynapse);
+        		if (numReadPulse > 1) shiftAddInput.Initialize(ceil(numCol/numColMuxed), log2(levelOutput)+numCellPerSynapse, clkFreq, spikingMode, numReadPulse);
+        		if (numAdd > 1) {
+        		    int adderBit = log2(levelOutput) + ceil(log2(numAdd));
+        		    int numAdder = ceil(numCol/numColMuxed);
+        		    dff.Initialize(adderBit*numAdder, clkFreq);
+        		    adder.Initialize(adderBit-1, numAdder, clkFreq);
+        		}
 	} else if (cell.memCellType == Type::RRAM ||  cell.memCellType == Type::FeFET || cell.memCellType == Type::Cap) {  //if array is RRAM
 		// nvCap added
 		double cellHeight = cell.heightInFeatureSize; 
@@ -277,7 +802,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resCellAccess/(numRowParallel/2), FPGA);       
 				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
 			}
-			if (SARADC) {
+			if (param->SARADC) {
 				sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
 			} else {
 				multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
@@ -318,7 +843,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resCellAccess/(numRowParallel/2), FPGA);       
 				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
 			}
-			if (SARADC) {
+			if (param->SARADC) {
 				sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
 			} else {
 				multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
@@ -353,7 +878,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);       
 				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
 			}
-			if (SARADC) {
+			if (param->SARADC) {
 				sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
 			} else {
 				multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
@@ -374,8 +899,227 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				shiftAddInput.Initialize(numAdder, adderBit + (numCellPerSynapse-1)*avgWeightBit+1, clkFreq, spikingMode, numReadPulse);
 			}									
 		}	
-	}
-	else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
+	
+
+
+	} else if (cell.memCellType == Type::_2TnC) {
+
+
+                        // cell.resCellAccess = cell.resistanceOn * IR_DROP_TOLERANCE;    //calculate access CMOS resistance
+                        // cell.widthAccessCMOS = CalculateOnResistance(tech.featureSize, NMOS, 300, tech) * LINEAR_REGION_RATIO / cell.resCellAccess;   //get access CMOS width
+                        // if (cell.widthAccessCMOS > cell.widthInFeatureSize) {   // Place transistor vertically
+                        //         printf("Transistor width of 1T1R=%.2fF is larger than the assigned cell width=%.2fF in layout\n", cell.widthAccessCMOS, cell.widthInFeatureSize);
+                        //         exit(-1);
+                        // }
+
+                        // cell.resMemCellOn = cell.resCellAccess + cell.resistanceOn;        //calculate single memory cell resistance_ON
+                        // cell.resMemCellOff = cell.resCellAccess + cell.resistanceOff;      //calculate single memory cell resistance_OFF
+                        // cell.resMemCellAvg = cell.resCellAccess + cell.resistanceAvg;      //calculate single memory cell resistance_AVG
+
+
+    			// 2T-nC READ OPERATION PHYSICS (Voltage Coupling & Tr Resistance)
+    			//if (cell.memCellType == Type::_2TnC) {
+
+				if (cell.mem_rdo == Type::ndro) {
+    			    
+    			    		// 1. Calculate the capacitive load at the internal node (Gate of Tr)
+    			    		//double cGateTr = CalculateGateCap(cell.widthAccessCMOS * tech.featureSize, tech);
+    			    		double cGateTr = 0.017e-15;
+
+    			    		// Define FeCap parameters
+    			    		// These represent the switching capacitance differences.
+    			    		double capFeOn = 10e-15;  // High switching capacitance (State '0')
+    			    		double capFeOff = 2e-15;  // Low switching capacitance (State '1')
+
+    			    		// 2. Voltage Coupling: Calculate V_int (Gate Voltage) for both states
+    			    		double vGateOn = cell.readVoltage * (capFeOn / (capFeOn + cGateTr));
+    			    		double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+
+    			    		// 3. Extract Transistor parameters for physics equations
+			    		
+			    		//Add custom values, tech is not the same
+    			    		//double muCox = tech.mobility * tech.cox;
+			    		double muCox = 150e-6;
+    			    		double w_l = cell.widthAccessCMOS;
+    			    		//double vTh = tech.vth;
+    			    		double vTh = 0.3;
+    			    		double vT = 0.026; // Thermal voltage at room temp (kT/q)
+
+    			    		// 4. Calculate "On" State Resistance (Linear Region of Tr)
+    			    		if (vGateOn > vTh) {
+    			    		    cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+    			    		} else {
+    			    		    cell.resMemCellOn = 1e9; // Fallback to High-Z if it doesn't turn on
+    			    		}
+
+    			    		// 5. Calculate "Off" State Resistance (Subthreshold Leakage of Tr)
+    			    		double n_factor = 1.2; // Subthreshold swing factor
+    			    		double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+    			    		
+    			    		cell.resMemCellOff = cell.readVoltage / iSubOff;
+				
+				} else if (cell.mem_rdo == Type::qndro) {
+					
+					// 1. In QNDR, the read voltage is high enough to flip the domain, dumping 
+					// the full polarization charge onto the gate. This is represented with a massive capFeOn.
+					
+					double cGateTr = 0.017e-15;
+					
+					// QNDR Parameters
+					double capFeOn_QNDR = 40e-15;  // Massive effective switching capacitance
+					double capFeOff = 2e-15;       // Unswitched state (dielectric only)
+					
+					// 2. Calculate Voltage Divider
+					double vGateOn = cell.readVoltage * (capFeOn_QNDR / (capFeOn_QNDR + cGateTr));
+					double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+
+					// 3. Extract Transistor parameters for physics equations
+
+                                        //Add custom values, tech is not the same
+                                        //double muCox = tech.mobility * tech.cox;
+                                        double muCox = 150e-6;
+                                        double w_l = cell.widthAccessCMOS;
+                                        //double vTh = tech.vth;
+                                        double vTh = 0.3;
+                                        double vT = 0.026; // Thermal voltage at room temp (kT/q)
+
+                                        // 4. Calculate "On" State Resistance (Linear Region of Tr)
+                                        if (vGateOn > vTh) {
+                                            cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+                                        } else {
+                                            cell.resMemCellOn = 1e9; // Fallback to High-Z if it doesn't turn on
+                                        }
+
+                                        // 5. Calculate "Off" State Resistance (Subthreshold Leakage of Tr)
+                                        double n_factor = 1.2; // Subthreshold swing factor
+                                        double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+
+                                        cell.resMemCellOff = cell.readVoltage / iSubOff;
+				}
+
+				 else if (cell.mem_rdo == Type::dro) {
+ 
+                                          // 1. In DR, the read voltage is high enough to flip the domain, dumping
+                                          // the full polarization charge onto the gate. This is represented with a massive capFeOn.
+ 
+                                          double cGateTr = 0.017e-15;
+ 
+                                          // DR Parameters
+                                          double capFeOn_DR = 80e-15;  // Massive effective switching capacitance
+                                          double capFeOff = 2e-15;       // Unswitched state (dielectric only)
+ 
+                                          // 2. Calculate Voltage Divider
+                                          double vGateOn = cell.readVoltage * (capFeOn_DR / (capFeOn_DR + cGateTr));
+                                          double vGateOff = cell.readVoltage * (capFeOff / (capFeOff + cGateTr));
+ 
+                                          // 3. Extract Transistor parameters for physics equations
+ 
+                                          //Add custom values, tech is not the same
+                                          //double muCox = tech.mobility * tech.cox;
+                                          double muCox = 150e-6;
+                                          double w_l = cell.widthAccessCMOS;
+                                          //double vTh = tech.vth;
+                                          double vTh = 0.3;
+                                          double vT = 0.026; // Thermal voltage at room temp (kT/q)
+ 
+                                          // 4. Calculate "On" State Resistance (Linear Region of Tr)
+                                          if (vGateOn > vTh) {
+                                              cell.resMemCellOn = 1.0 / (muCox * w_l * (vGateOn - vTh));
+                                          } else {
+					      cell.resMemCellOn = 1e9; // Fallback to High-Z if it doesn't turn on
+                                          }
+ 
+                                          // 5. Calculate "Off" State Resistance (Subthreshold Leakage of Tr)
+                                          double n_factor = 1.2; // Subthreshold swing factor
+                                          double iSubOff = muCox * w_l * (vT * vT) * exp((vGateOff - vTh) / (n_factor * vT));
+ 
+                                          cell.resMemCellOff = cell.readVoltage / iSubOff;
+                                  }
+
+				 double res_equivalent =  (cell.resMemCellOff * cell.resMemCellOn)/(cell.resMemCellOff + cell.resMemCellOn);
+
+                        // Initialize Matrices
+        		//double resTg = cell.resMemCellAvg / numRow;
+			double resTg = CalculateOnResistance(tech.featureSize * 2, NMOS, inputParameter.temperature, tech);
+
+                        if (cell.writeVoltage > 1.5) {
+                                //WBL Level Shifter (Row Plane - Horizontal)
+                                wblLevelShifter.Initialize(bitsPerCell, activityRowWrite, clkFreq);
+
+                                //SSL Level Shifter (Col)
+                                sslLevelShifter.Initialize(numCol, activityColWrite, clkFreq);
+
+                                //WWL Level Shifter (Row)
+                                wwlLevelShifter.Initialize(numRow, activityRowWrite, clkFreq);
+
+                                //WPL Level Shifter (Row)
+                                wplLevelShifter.Initialize(numRow, activityRowWrite, clkFreq);
+                }
+
+
+                        // double resTg = cell.resMemCellOn / numRow;
+                        //double resTg = cell.resMemCellAvg / numRow;
+
+                        //WWL: Write Wordline (ROW MODE)
+                        wwlDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow)), false, false);
+                        wwlSwitchMatrix.Initialize(ROW_MODE, numRow, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+                        //WPL: Write Plateline (ROW MODE)
+                        wplDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow)), false, false);
+                        wplSwitchMatrix.Initialize(ROW_MODE, numRow, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+
+                        //RBL: Read Bitline (ROW MODE)
+                        rblDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow)), false, false);
+                        rblSwitchMatrix.Initialize(ROW_MODE, numRow, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+                        //WBL: Write Bitline (ROW MODE)
+                        wblDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow * bitsPerCell)), false, false);
+                        wblSwitchMatrix.Initialize(ROW_MODE, numRow * bitsPerCell, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+
+                        //SSL: Source Select Line (COL MODE)
+                        sslDecoder.Initialize(REGULAR_COL, (int)ceil(log2(numCol)), false, false);
+                        sslSwitchMatrix.Initialize(COL_MODE, numCol, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+                        //RSL: Read Select/Source Line (COL MODE)
+                        rslDecoder.Initialize(REGULAR_COL, (int)ceil(log2(numCol)), false, false);
+                        rslSwitchMatrix.Initialize(COL_MODE, numCol, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
+
+
+
+                        if (numColMuxed>1) {
+                                // mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, res_equivalent, FPGA);
+                                mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);
+                                muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
+                        }
+                        if (param->SARADC) {
+                                sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
+                        } else {
+                                multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
+                                multilevelSAEncoder.Initialize(levelOutput, numCol/numColMuxed);
+                        }
+
+			currentSenseAmp.Initialize(numCol, false, false, clkFreq, 1);
+
+                        if (numCellPerSynapse > 1) {
+                                shiftAddWeight.Initialize(ceil(numCol/numColMuxed), log2(levelOutput), clkFreq, spikingMode, numCellPerSynapse);
+                        }
+                        if (numReadPulse > 1) {
+                                shiftAddInput.Initialize(ceil(numCol/numColMuxed), log2(levelOutput)+numCellPerSynapse, clkFreq, spikingMode, numReadPulse);
+                        }
+
+			if (numAdd > 1) {
+    			        int adderBit = log2(levelOutput) + ceil(log2(numAdd));
+    			        int numAdder = ceil(numCol/numColMuxed);
+    			        dff.Initialize(adderBit*numAdder, clkFreq);
+    			        adder.Initialize(adderBit-1, numAdder, clkFreq);
+    			}
+
+
+
+
+	} else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
 		if (cell.accessType == CMOS_access) {	// 1T1R
 
 			cell.resCellAccess = cell.resistanceOn * IR_DROP_TOLERANCE;    //calculate access CMOS resistance
@@ -443,7 +1187,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				mux.Initialize(numInput, numColMuxed, resTg, FPGA);     
 				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
 			}
-			if (SARADC) {
+			if (param->SARADC) {
 				sarADC.Initialize(numCol/numColMuxed, pow(2, avgWeightBit), clkFreq, numReadCellPerOperationNeuro);
 			} else {
 				multilevelSenseAmp.Initialize(numCol/numColMuxed, pow(2, avgWeightBit), clkFreq, numReadCellPerOperationNeuro, false, currentMode);
@@ -488,7 +1232,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);       
 				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed)), true, false);
 			}
-			if (SARADC) {
+			if (param->SARADC) {
 				sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
 			} else {
 				multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
@@ -559,7 +1303,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 				mux.Initialize(ceil(numCol/numColMuxed), numColMuxed, resTg, FPGA);       
 				muxDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numColMuxed/2)), true, true);    
 			}
-			if (SARADC) {
+			if (param->SARADC) {
 				sarADC.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro);
 			} else {
 				multilevelSenseAmp.Initialize(numCol/numColMuxed, levelOutput, clkFreq, numReadCellPerOperationNeuro, true, currentMode);
@@ -624,7 +1368,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 					double minMuxHeight = MAX(muxDecoder.height, mux.height);
 					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculateUnitArea();
 					sarADC.CalculateArea(NULL, widthArray, NONE);
 				} else {
@@ -684,7 +1428,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 					double minMuxHeight = MAX(muxDecoder.height, mux.height);
 					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculateUnitArea();
 					sarADC.CalculateArea(NULL, widthArray, NONE);
 				} else {
@@ -720,7 +1464,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 					double minMuxHeight = MAX(muxDecoder.height, mux.height);
 					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculateUnitArea();
 					sarADC.CalculateArea(NULL, widthArray, NONE);
 				} else {
@@ -765,8 +1509,486 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 				cout << "[Subarray] Error: Conventional parallel mode is required for nvCap!" << endl;
 				exit(-1);
 			}
-		}
-		else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
+		
+
+
+		} else if (cell.memCellType == Type::_2TnC) {
+                double bitsPerCell = param->bitsPerCell;
+		//Calculate Core Array Area
+                heightArray = lengthCol;
+                widthArray = lengthRow;
+                areaArray = heightArray * widthArray;
+
+                //Peripheral Circuits (Assumed similar to FeFET/DRAM)
+                // We need a Switch Matrix for WL (Rows) and SL/BL (Cols)
+               //  wblDecoder.CalculateArea(heightArray, NULL, NONE);
+               //  wblSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+
+                //SSL (Source Select Line)
+                sslDecoder.CalculateArea(NULL, widthArray, NONE);
+                sslSwitchMatrix.CalculateArea(NULL, widthArray, NONE);
+
+                //RSL (Read Select Line)
+                rslDecoder.CalculateArea(NULL, widthArray, NONE);
+                rslSwitchMatrix.CalculateArea(NULL, widthArray, NONE);
+
+
+               //  //WWL (Write Wordline)
+               //  wwlDecoder.CalculateArea(heightArray, NULL, NONE);
+               //  wwlSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+
+               //  //WPL (Write Plateline)
+               //  wplDecoder.CalculateArea(heightArray, NULL, NONE);
+               //  wplSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+
+               //  //RBL (Read Bitline - Standard)
+               //  rblDecoder.CalculateArea(heightArray, NULL, NONE);
+               //  rblSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+
+
+                //Mux & ADC
+                if (numColMuxed > 1) {
+                    mux.CalculateArea(NULL, widthArray, NONE);
+                    muxDecoder.CalculateArea(NULL, NULL, NONE);
+                    double minMuxHeight = MAX(muxDecoder.height, mux.height);
+                    mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
+                }
+
+		// if (cell.writeVoltage > 1.5) {
+            	//     sslLevelShifter.CalculateArea(NULL, widthArray, NONE);
+            	// }
+
+                if (param->SARADC) {
+                        // SAR ADC calculates its natural area without constraints
+                        sarADC.CalculateUnitArea();
+                        sarADC.CalculateArea(NULL, widthArray, NONE);
+                } else {
+                        // Flash ADC (MLSA)
+                        multilevelSenseAmp.CalculateArea(NULL, widthArray, NONE);
+                        multilevelSAEncoder.CalculateArea(NULL, widthArray, NONE);
+                }
+
+		//currentSenseAmp.CalculateArea(widthArray);
+		currentSenseAmp.CalculateUnitArea();
+		currentSenseAmp.CalculateArea(widthArray/numCol);
+
+
+                //Shift-Add Logic (Accumulators)
+                if (numReadPulse > 1) {
+                        shiftAddInput.CalculateArea(NULL, widthArray, NONE);
+                }
+                if (numCellPerSynapse > 1) {
+                        shiftAddWeight.CalculateArea(NULL, widthArray, NONE);
+                }
+		if (numAdd > 1) {
+    		        adder.CalculateArea(NULL, widthArray, NONE);
+    		        dff.CalculateArea(NULL, widthArray, NONE);
+    		}
+
+
+                //Total Height = Array + Column Drivers + Readout Circuits
+		//Add level shifters here
+                height = heightArray
+                                 + rslSwitchMatrix.height + rslDecoder.height
+                                 + sslSwitchMatrix.height + sslDecoder.height
+                                 // + ((cell.writeVoltage > 1.5) ? sslLevelShifter.height : 0)
+				 + ((numColMuxed > 1) ? mux.height : 0)
+                                 + (param->SARADC ? sarADC.height : (multilevelSenseAmp.height + multilevelSAEncoder.height))
+				 // + currentSenseAmp.height
+                                 + ((numReadPulse > 1) ? shiftAddInput.height : 0)
+				 + ((numCellPerSynapse > 1) ? shiftAddWeight.height : 0)
+				 + ((numAdd > 1) ? (adder.height + dff.height) : 0);
+
+		double rowDriverHeight = height - ((numColMuxed > 1) ? muxDecoder.height : 0);
+		
+		if (cell.writeVoltage > 1.5) {
+                    // Row-oriented Level Shifters (Constrained by heightArray)
+                    wwlLevelShifter.CalculateArea(rowDriverHeight, NULL, NONE);
+                    wplLevelShifter.CalculateArea(rowDriverHeight, NULL, NONE);
+                    wblLevelShifter.CalculateArea(rowDriverHeight, NULL, NONE);
+
+                    // Column-oriented Level Shifter (Constrained by widthArray)
+                    //sslLevelShifter.CalculateArea(NULL, widthArray, NONE);
+                }
+
+		wblDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+                wblSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+		//WWL (Write Wordline)
+                wwlDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+                wwlSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+                //WPL (Write Plateline)
+                wplDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+                wplSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+                //RBL (Read Bitline - Standard)
+                rblDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+                rblSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+		double totalRowDriverWidth = ((cell.writeVoltage > 1.5) ? (wwlLevelShifter.width + wplLevelShifter.width + wblLevelShifter.width) : 0)
+		            + wwlSwitchMatrix.width + wwlDecoder.width
+                            + wplSwitchMatrix.width + wplDecoder.width
+                            + wblSwitchMatrix.width + wblDecoder.width
+                            + rblSwitchMatrix.width + rblDecoder.width;
+
+
+		//Total Width = Array + Row Drivers
+                width = widthArray + 
+                		MAX(totalRowDriverWidth, ((numColMuxed > 1) ? muxDecoder.width : 0));
+
+
+                //Calculate Final Area
+                area = height * width;
+
+                //Calculate Used Area (Active silicon only, excluding empty space/white space)
+		usedArea = areaArray
+                       + ((cell.writeVoltage > 1.5) ? (wwlLevelShifter.area + wplLevelShifter.area + wblLevelShifter.area) : 0)
+		       + wwlSwitchMatrix.area + wwlDecoder.area
+                       + wplSwitchMatrix.area + wplDecoder.area
+                       + rblSwitchMatrix.area + rblDecoder.area
+                       + wblSwitchMatrix.area + wblDecoder.area
+                       // + sslSwitchMatrix.area + sslDecoder.area
+                       + rslSwitchMatrix.area + rslDecoder.area
+                       + ((numColMuxed > 1) ? (mux.area + muxDecoder.area) : 0)
+                       + (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area))
+		       // + currentSenseAmp.area
+                       + ((numReadPulse > 1) ? shiftAddInput.area : 0)
+		       + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0)
+	               + ((numAdd > 1) ? (adder.area + dff.area) : 0); 
+
+                if (area < usedArea) { cout << "wtf THIS IS NOT CORRECT" << endl ;}
+		emptyArea = area - usedArea;
+
+		areaADC = (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area));
+		areaADC = areaADC + currentSenseAmp.area;
+                areaAccum = ((numReadPulse > 1) ? shiftAddInput.area : 0) + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0) + ((numAdd > 1) ? (adder.area + dff.area) : 0);
+                areaOther = usedArea - areaArray - areaADC - areaAccum;
+
+		// cout << "\n=================== 2TnC Area Breakdown (um^2) ===================" << endl;
+		// cout << "Array Core Area:           " << areaArray * 1e12 << endl;
+		// cout << "WWL Decoder Area:          " << wwlDecoder.area * 1e12 << endl;
+		// cout << "WWL Switch Matrix Area:    " << wwlSwitchMatrix.area * 1e12 << endl;
+		// cout << "WPL Decoder Area:          " << wplDecoder.area * 1e12 << endl;
+		// cout << "WPL Switch Matrix Area:    " << wplSwitchMatrix.area * 1e12 << endl;
+		// cout << "WBL Decoder Area:          " << wblDecoder.area * 1e12 << endl;
+		// cout << "WBL Switch Matrix Area:    " << wblSwitchMatrix.area * 1e12 << endl;
+		// cout << "RSL Decoder Area:          " << rslDecoder.area * 1e12 << endl;
+		// cout << "RSL Switch Matrix Area:    " << rslSwitchMatrix.area * 1e12 << endl;
+		// cout << "RBL Decoder Area:          " << rblDecoder.area * 1e12 << endl;
+		// cout << "RBL Switch Matrix Area:    " << rblSwitchMatrix.area * 1e12 << endl;
+		// if (cell.writeVoltage > 1.5) {
+		//     cout << "WWL Level Shifter Area:    " << wwlLevelShifter.area * 1e12 << endl;
+		//     cout << "WPL Level Shifter Area:    " << wplLevelShifter.area * 1e12 << endl;
+		//     cout << "WBL Level Shifter Area:    " << wblLevelShifter.area * 1e12 << endl;
+		// }
+		// if (numColMuxed > 1) {
+		//     cout << "MUX Area:                  " << mux.area * 1e12 << endl;
+		//     cout << "MUX Decoder Area:          " << muxDecoder.area * 1e12 << endl;
+		// }
+		// if (param->SARADC) {
+		//     cout << "SAR ADC Area:              " << sarADC.area * 1e12 << endl;
+		// } else {
+		//     cout << "Multilevel SA Area:        " << multilevelSenseAmp.area * 1e12 << endl;
+		//     cout << "Multilevel SA Encoder Area:" << multilevelSAEncoder.area * 1e12 << endl;
+		// }
+		// cout << "Current Sense Amp Area:    " << currentSenseAmp.area * 1e12 << endl;
+		// if (numReadPulse > 1) cout << "ShiftAdd Input Area:       " << shiftAddInput.area * 1e12 << endl;
+		// if (numCellPerSynapse > 1) cout << "ShiftAdd Weight Area:      " << shiftAddWeight.area * 1e12 << endl;
+		// if (numAdd > 1) {
+		//     cout << "Adder Area:                " << adder.area * 1e12 << endl;
+		//     cout << "DFF Area:                  " << dff.area * 1e12 << endl;
+		// }
+		// cout << "------------------------------------------------------------------" << endl;
+		// cout << "Used Area (Active Silicon):" << usedArea * 1e12 << endl;
+		// cout << "Empty Area (White Space):  " << emptyArea * 1e12 << endl;
+		// cout << "TOTAL SUBARRAY AREA:       " << area * 1e12 << endl;
+		// cout << "==================================================================\n" << endl;
+
+		} else if (cell.memCellType == Type::_1TnC) {
+        		double bitsPerCell = param->bitsPerCell;
+
+			heightArray = lengthCol;
+        		widthArray = lengthRow;
+        		areaArray = heightArray * widthArray;
+			cout << "Raw Memory Cell Area (No Peripherals): " << areaArray * 1e12 << " um^2" << endl;
+
+			plSwitchMatrix.CalculateArea(NULL, widthArray, NONE);
+                        plDecoder.CalculateArea(NULL, widthArray, NONE);
+
+        		//Mux & ADC
+               		if (numColMuxed > 1) {
+               		     mux.CalculateArea(NULL, widthArray, NONE);
+               		     muxDecoder.CalculateArea(NULL, NULL, NONE);
+               		     double minMuxHeight = MAX(muxDecoder.height, mux.height);
+               		     mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
+               		}
+
+			if (cell.writeVoltage > 1.5) {
+				plLevelShifter.CalculateArea(NULL, widthArray, NONE);
+			}
+
+			if (param->SARADC) {
+                        // SAR ADC calculates its natural area without constraints
+                        sarADC.CalculateUnitArea();
+                        sarADC.CalculateArea(NULL, widthArray, NONE);
+                	} else {
+                	        // Flash ADC (MLSA)
+                	        multilevelSenseAmp.CalculateArea(NULL, widthArray, NONE);
+                	        multilevelSAEncoder.CalculateArea(NULL, widthArray, NONE);
+                	}
+
+                	currentSenseAmp.CalculateUnitArea();
+			//currentSenseAmp.CalculateArea(widthArray);
+			currentSenseAmp.CalculateArea(widthArray/numCol);
+
+
+                	//Shift-Add Logic (Accumulators)
+                	if (numReadPulse > 1) {
+                	        shiftAddInput.CalculateArea(NULL, widthArray, NONE);
+                	}
+                	if (numCellPerSynapse > 1) {
+                	        shiftAddWeight.CalculateArea(NULL, widthArray, NONE);
+                	}
+                	if (numAdd > 1) {
+                	        adder.CalculateArea(NULL, widthArray, NONE);
+                	        dff.CalculateArea(NULL, widthArray, NONE);
+                	}
+
+			//Total Height = Array + Column Drivers + Readout Circuits
+                	//Add level shifters here
+                	// double maxColPeripheralWidth = 0;
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, plSwitchMatrix.width);
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, plDecoder.width);
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, ((numColMuxed > 1) ? mux.width : 0));
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, (param->SARADC ? sarADC.width : (multilevelSenseAmp.width + multilevelSAEncoder.width)));
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, currentSenseAmp.width);
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, ((numReadPulse > 1) ? shiftAddInput.width : 0));
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, ((numCellPerSynapse > 1) ? shiftAddWeight.width : 0));
+        		// maxColPeripheralWidth = MAX(maxColPeripheralWidth, ((numAdd > 1) ? MAX(adder.width, dff.width) : 0));
+        		// if (cell.writeVoltage > 1.5) maxColPeripheralWidth = MAX(maxColPeripheralWidth, plLevelShifter.width);
+
+			// double effectiveArrayWidth = MAX(widthArray, maxColPeripheralWidth);
+
+			// // Calculate the TRUE height of the row drivers
+        		// if (cell.writeVoltage > 1.5) {
+        		//     wlLevelShifter.CalculateArea(heightArray, NULL, NONE);
+        		//     blLevelShifter.CalculateArea(heightArray, NULL, NONE);
+        		// }
+        		// blDecoder.CalculateArea(heightArray, NULL, NONE);
+        		// blSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+        		// wlDecoder.CalculateArea(heightArray, NULL, NONE);
+        		// wlSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
+
+        		// double maxRowPeripheralHeight = 0;
+        		// maxRowPeripheralHeight = MAX(maxRowPeripheralHeight, blDecoder.height);
+        		// maxRowPeripheralHeight = MAX(maxRowPeripheralHeight, blSwitchMatrix.height);
+        		// maxRowPeripheralHeight = MAX(maxRowPeripheralHeight, wlDecoder.height);
+        		// maxRowPeripheralHeight = MAX(maxRowPeripheralHeight, wlSwitchMatrix.height);
+        		// if (cell.writeVoltage > 1.5) {
+        		//     maxRowPeripheralHeight = MAX(maxRowPeripheralHeight, wlLevelShifter.height);
+        		//     maxRowPeripheralHeight = MAX(maxRowPeripheralHeight, blLevelShifter.height);
+        		// }
+
+			// double effectiveArrayHeight = MAX(heightArray, maxRowPeripheralHeight);
+
+			// // Total Height = Effective Array Height + Column Drivers
+        		// height = effectiveArrayHeight
+        		//          + ((cell.writeVoltage > 1.5) ? plLevelShifter.height : 0)
+        		//          + plSwitchMatrix.height + plDecoder.height
+        		//          + ((numColMuxed > 1) ? mux.height : 0)
+        		//          + (param->SARADC ? sarADC.height : (multilevelSenseAmp.height + multilevelSAEncoder.height))
+        		//          + currentSenseAmp.height
+        		//          + ((numReadPulse > 1) ? shiftAddInput.height : 0)
+        		//          + ((numCellPerSynapse > 1) ? shiftAddWeight.height : 0)
+        		//          + ((numAdd > 1) ? (adder.height + dff.height) : 0);
+
+        		// // Total Width = Effective Array Width + Row Drivers
+        		// double totalRowDriverWidth = ((cell.writeVoltage > 1.5) ? (wlLevelShifter.width + blLevelShifter.width) : 0)
+        		//                              + wlSwitchMatrix.width + wlDecoder.width
+        		//                              + blSwitchMatrix.width + blDecoder.width;
+
+        		// width = effectiveArrayWidth + MAX(totalRowDriverWidth, ((numColMuxed > 1) ? muxDecoder.width : 0));
+			
+			 height = heightArray
+                	                  + ((cell.writeVoltage > 1.5) ? plLevelShifter.height : 0)
+                	                  + plSwitchMatrix.height + plDecoder.height
+                	                  + ((numColMuxed > 1) ? mux.height : 0)
+                	                  + (param->SARADC ? sarADC.height : (multilevelSenseAmp.height + multilevelSAEncoder.height))
+                	                  + ((numReadPulse > 1) ? shiftAddInput.height : 0)
+			 		  + ((numCellPerSynapse > 1) ? shiftAddWeight.height : 0)
+                	                  + ((numAdd > 1) ? (adder.height + dff.height) : 0);
+
+			 double rowDriverHeight = height - ((numColMuxed > 1) ? muxDecoder.height : 0);
+
+			 if (cell.writeVoltage > 1.5) {
+                	     // Row-oriented Level Shifters (Constrained by heightArray)
+                	     wlLevelShifter.CalculateArea(rowDriverHeight, NULL, NONE);
+                	     blLevelShifter.CalculateArea(rowDriverHeight, NULL, NONE);
+                	 }
+
+                	 blDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+                	 blSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+                	 //WL (Wordline)
+                	 wlDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+                	 wlSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+			 double totalRowDriverWidth = ((cell.writeVoltage > 1.5) ? (wlLevelShifter.width + blLevelShifter.width) : 0)
+               		 		             + wlSwitchMatrix.width + wlDecoder.width
+               		 		             + blSwitchMatrix.width + blDecoder.width;
+
+
+               		 //Total Width = Array + Row Drivers
+               		 width = widthArray + MAX(totalRowDriverWidth, ((numColMuxed > 1) ? muxDecoder.width : 0));
+
+
+			area = height * width;
+
+			//Calculate Used Area (Active silicon only, excluding empty space/white space)
+               		 // usedArea = areaArray
+               		 //        + ((cell.writeVoltage > 1.5) ? (wlLevelShifter.area + plLevelShifter.area + blLevelShifter.area) : 0)
+               		 //        + wlSwitchMatrix.area + wlDecoder.area
+               		 //        + plSwitchMatrix.area + plDecoder.area
+               		 //        + blSwitchMatrix.area + blDecoder.area
+               		 //        + ((numColMuxed > 1) ? (mux.area + muxDecoder.area) : 0)
+               		 //        + (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area))
+               		 //        + currentSenseAmp.area
+			 //        + ((numReadPulse > 1) ? shiftAddInput.area : 0)
+	                 //        + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0)
+               		 //        + ((numAdd > 1) ? (adder.area + dff.area) : 0);
+
+			 usedArea = areaArray
+               		        + ((cell.writeVoltage > 1.5) ? (wlLevelShifter.area + plLevelShifter.area + blLevelShifter.area) : 0)
+               		        + wlSwitchMatrix.area + wlDecoder.area
+               		        + plSwitchMatrix.area + plDecoder.area
+               		        + blSwitchMatrix.area + blDecoder.area
+               		        + ((numColMuxed > 1) ? (mux.area + muxDecoder.area) : 0)
+               		        + (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area))
+				+ ((numReadPulse > 1) ? shiftAddInput.area : 0)
+	                        + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0)
+               		        + ((numAdd > 1) ? (adder.area + dff.area) : 0);
+
+                     // Safeguard against Mux Decoder corner overlap
+                     if (area < usedArea) { cout << "wtf THIS IS NOT CORRECT" << endl ;}
+               		 emptyArea = area - usedArea;
+
+               		 //emptyArea = area - usedArea;
+
+               		 areaADC = (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area));
+			 areaAccum = ((numReadPulse > 1) ? shiftAddInput.area : 0) + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0) + ((numAdd > 1) ? (adder.area + dff.area) : 0);
+               		 areaOther = usedArea - areaArray - areaADC - areaAccum;
+
+		 	 //  cout << "\n=================== 1TnC Area Breakdown (um^2) ===================" << endl;
+		 	 // cout << "Array Core Area:           " << areaArray * 1e12 << endl;
+		 	 // cout << "WL Decoder Area:           " << wlDecoder.area * 1e12 << endl;
+		 	 // cout << "WL Switch Matrix Area:     " << wlSwitchMatrix.area * 1e12 << endl;
+		 	 // cout << "BL Decoder Area:           " << blDecoder.area * 1e12 << endl;
+		 	 // cout << "BL Switch Matrix Area:     " << blSwitchMatrix.area * 1e12 << endl;
+		 	 // cout << "PL Decoder Area:           " << plDecoder.area * 1e12 << endl;
+		 	 // cout << "PL Switch Matrix Area:     " << plSwitchMatrix.area * 1e12 << endl;
+		 	 // if (cell.writeVoltage > 1.5) {
+		 	 //     cout << "WL Level Shifter Area:     " << wlLevelShifter.area * 1e12 << endl;
+		 	 //     cout << "BL Level Shifter Area:     " << blLevelShifter.area * 1e12 << endl;
+		 	 //     cout << "PL Level Shifter Area:     " << plLevelShifter.area * 1e12 << endl;
+		 	 // }
+		 	 // if (numColMuxed > 1) {
+		 	 //     cout << "MUX Area:                  " << mux.area * 1e12 << endl;
+		 	 //     cout << "MUX Decoder Area:          " << muxDecoder.area * 1e12 << endl;
+		 	 // }
+		 	 // if (param->SARADC) {
+		 	 //     cout << "SAR ADC Area:              " << sarADC.area * 1e12 << endl;
+		 	 // } else {
+		 	 //     cout << "Multilevel SA Area:        " << multilevelSenseAmp.area * 1e12 << endl;
+		 	 //     cout << "Multilevel SA Encoder Area:" << multilevelSAEncoder.area * 1e12 << endl;
+		 	 // }
+		 	 // if (numReadPulse > 1) cout << "ShiftAdd Input Area:       " << shiftAddInput.area * 1e12 << endl;
+		 	 // if (numCellPerSynapse > 1) cout << "ShiftAdd Weight Area:      " << shiftAddWeight.area * 1e12 << endl;
+		 	 // if (numAdd > 1) {
+		 	 //     cout << "Adder Area:                " << adder.area * 1e12 << endl;
+		 	 //     cout << "DFF Area:                  " << dff.area * 1e12 << endl;
+		 	 // }
+		 	 // cout << "------------------------------------------------------------------" << endl;
+		 	 // cout << "Used Area (Active Silicon):" << usedArea * 1e12 << endl;
+		 	 // cout << "Empty Area (White Space):  " << emptyArea * 1e12 << endl;
+		 	 // cout << "TOTAL SUBARRAY AREA:       " << area * 1e12 << endl;
+		 	 // cout << "==================================================================\n" << endl;
+
+
+		} else if (cell.memCellType == Type::_1T1C) {
+        		heightArray = lengthCol;
+        		widthArray = lengthRow;
+        		areaArray = heightArray * widthArray;
+
+        		// Column drivers
+        		blSwitchMatrix.CalculateArea(NULL, widthArray, NONE);
+        		blDecoder.CalculateArea(NULL, widthArray, NONE);
+        		if (cell.writeVoltage > 1.5) blLevelShifter.CalculateArea(NULL, widthArray, NONE);
+
+        		if (numColMuxed > 1) {
+        		    mux.CalculateArea(NULL, widthArray, NONE);
+        		    muxDecoder.CalculateArea(NULL, NULL, NONE);
+        		    mux.CalculateArea(MAX(muxDecoder.height, mux.height), widthArray, OVERRIDE);
+        		}
+
+        		if (param->SARADC) {
+        		    sarADC.CalculateUnitArea();
+        		    sarADC.CalculateArea(NULL, widthArray, NONE);
+        		} else {
+        		    multilevelSenseAmp.CalculateArea(NULL, widthArray, NONE);
+        		    multilevelSAEncoder.CalculateArea(NULL, widthArray, NONE);
+        		}
+
+        		currentSenseAmp.CalculateUnitArea();
+        		currentSenseAmp.CalculateArea(widthArray/numCol);
+
+        		if (numReadPulse > 1) shiftAddInput.CalculateArea(NULL, widthArray, NONE);
+        		if (numCellPerSynapse > 1) shiftAddWeight.CalculateArea(NULL, widthArray, NONE);
+        		if (numAdd > 1) {
+        		    adder.CalculateArea(NULL, widthArray, NONE);
+        		    dff.CalculateArea(NULL, widthArray, NONE);
+        		}
+
+        		// Total Height = Array + Col Drivers + Sense/Math
+        		height = heightArray
+        		         + ((cell.writeVoltage > 1.5) ? blLevelShifter.height : 0)
+        		         + blSwitchMatrix.height + blDecoder.height
+        		         + ((numColMuxed > 1) ? mux.height : 0)
+        		         + (param->SARADC ? sarADC.height : (multilevelSenseAmp.height + multilevelSAEncoder.height))
+        		         + ((numReadPulse > 1) ? shiftAddInput.height : 0)
+        		         + ((numCellPerSynapse > 1) ? shiftAddWeight.height : 0)
+        		         + ((numAdd > 1) ? (adder.height + dff.height) : 0);
+
+        		double rowDriverHeight = height - ((numColMuxed > 1) ? muxDecoder.height : 0);
+
+        		// Row drivers
+        		if (cell.writeVoltage > 1.5) wlLevelShifter.CalculateArea(rowDriverHeight, NULL, NONE);
+        		wlDecoder.CalculateArea(rowDriverHeight, NULL, NONE);
+        		wlSwitchMatrix.CalculateArea(rowDriverHeight, NULL, NONE);
+
+        		double totalRowDriverWidth = ((cell.writeVoltage > 1.5) ? wlLevelShifter.width : 0)
+        		                             + wlSwitchMatrix.width + wlDecoder.width;
+
+        		width = widthArray + MAX(totalRowDriverWidth, ((numColMuxed > 1) ? muxDecoder.width : 0));
+        		area = height * width;
+
+        		usedArea = areaArray
+        		         + ((cell.writeVoltage > 1.5) ? (wlLevelShifter.area + blLevelShifter.area) : 0)
+        		         + wlSwitchMatrix.area + wlDecoder.area
+        		         + blSwitchMatrix.area + blDecoder.area
+        		         + ((numColMuxed > 1) ? (mux.area + muxDecoder.area) : 0)
+        		         + (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area))
+        		         + ((numReadPulse > 1) ? shiftAddInput.area : 0)
+        		         + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0)
+        		         + ((numAdd > 1) ? (adder.area + dff.area) : 0);
+
+        		emptyArea = area - usedArea;
+
+        		areaADC = (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area));
+        		areaAccum = ((numReadPulse > 1) ? shiftAddInput.area : 0) + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0) + ((numAdd > 1) ? (adder.area + dff.area) : 0);
+        		areaOther = usedArea - areaArray - areaADC - areaAccum;
+
+		} else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
 			// Array only
 			heightArray = lengthCol;
 			widthArray = lengthRow;
@@ -794,7 +2016,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 					double minMuxHeight = MAX(muxDecoder.height, mux.height);
 					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculateUnitArea();
 					sarADC.CalculateArea(NULL, widthArray, NONE);
 				} else {
@@ -833,6 +2055,47 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 				areaADC = multilevelSenseAmp.area + multilevelSAEncoder.area + sarADC.area;
 				areaAccum = adder.area + dff.area + shiftAddInput.area + shiftAddWeight.area;
 				areaOther = ((cell.writeVoltage > 1.5)==true? (wllevelshifter.area + bllevelshifter.area + sllevelshifter.area):0) + wlDecoder.area + wlNewDecoderDriver.area + wlDecoderDriver.area + slSwitchMatrix.area + ((numColMuxed > 1)==true? (mux.area + muxDecoder.area):0);
+			
+			// cout << "\n================= RRAM (Crossbar - Sequential) Area Breakdown (um^2) =================" << endl;
+			// 	 cout << "Array Core Area:           " << areaArray * 1e12 << endl;
+			// 	 cout << "WL Decoder Area:           " << wlDecoder.area * 1e12 << endl;
+			// 	 
+			// 	 // Differentiate based on the access type (1T1R vs Cross-point)
+			// 	 if (cell.accessType == CMOS_access) {
+			// 	     cout << "WL Decoder Driver Area:    " << wlNewDecoderDriver.area * 1e12 << endl;
+			// 	 } else {
+			// 	     cout << "WL Decoder Driver Area:    " << wlDecoderDriver.area * 1e12 << endl;
+			// 	 }
+			// 	 
+			// 	 cout << "SL Switch Matrix Area:     " << slSwitchMatrix.area * 1e12 << endl;
+			// 	 
+			// 	 if (cell.writeVoltage > 1.5) {
+			// 	     cout << "WL Level Shifter Area:     " << wllevelshifter.area * 1e12 << endl;
+			// 	     cout << "BL Level Shifter Area:     " << bllevelshifter.area * 1e12 << endl;
+			// 	     cout << "SL Level Shifter Area:     " << sllevelshifter.area * 1e12 << endl;
+			// 	 }
+			// 	 if (numColMuxed > 1) {
+			// 	     cout << "MUX Area:                  " << mux.area * 1e12 << endl;
+			// 	     cout << "MUX Decoder Area:          " << muxDecoder.area * 1e12 << endl;
+			// 	 }
+			// 	 if (param->SARADC) {
+			// 	     cout << "SAR ADC Area:              " << sarADC.area * 1e12 << endl;
+			// 	 } else {
+			// 	     cout << "Multilevel SA Area:        " << multilevelSenseAmp.area * 1e12 << endl;
+			// 	     if (avgWeightBit > 1) {
+			// 	         cout << "Multilevel SA Encoder Area:" << multilevelSAEncoder.area * 1e12 << endl;
+			// 	     }
+			// 	 }
+			// 	 
+			// 	 if (numReadPulse > 1) cout << "ShiftAdd Input Area:       " << shiftAddInput.area * 1e12 << endl;
+			// 	 if (numCellPerSynapse > 1) cout << "ShiftAdd Weight Area:      " << shiftAddWeight.area * 1e12 << endl;
+			// 	 cout << "Adder Area:                " << adder.area * 1e12 << endl;
+			// 	 cout << "DFF Area:                  " << dff.area * 1e12 << endl;
+			// 	 cout << "-------------------------------------------------------------------------" << endl;
+			// 	 cout << "Used Area (Active Silicon):" << usedArea * 1e12 << endl;
+			// 	 cout << "Empty Area (White Space):  " << emptyArea * 1e12 << endl;
+			// 	 cout << "TOTAL SUBARRAY AREA:       " << area * 1e12 << endl;
+			// 	 cout << "=========================================================================\n" << endl;
 			} else if (conventionalParallel) {
 				//20241031 update switch to the bottom  
 				// if (cell.accessType == CMOS_access) {
@@ -847,7 +2110,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 					double minMuxHeight = MAX(muxDecoder.height, mux.height);
 					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculateUnitArea();
 					sarADC.CalculateArea(NULL, widthArray, NONE);
 				} else {
@@ -887,16 +2150,55 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 				}
 				wllevelshifter.CalculateArea(height-muxDecoder.height, NULL, NONE);
 				bllevelshifter.CalculateArea(height-muxDecoder.height, NULL, NONE);
-				width = MAX( ((cell.writeVoltage > 1.5)==true? (wllevelshifter.width + bllevelshifter.width):0) + wlNewSwitchMatrix.width + wlSwitchMatrix.width, ((numColMuxed > 1)==true? (muxDecoder.width):0)) + widthArray + bufferarea/lengthCol; // added;
-				usedArea = areaArray + ((cell.writeVoltage > 1.5)==true? (wllevelshifter.area + bllevelshifter.area + sllevelshifter.area):0) + wlSwitchMatrix.area + wlNewSwitchMatrix.area + slSwitchMatrix.area + 
+				width = MAX( ((cell.writeVoltage > 1.5)==true? (wllevelshifter.width + bllevelshifter.width):0) + wlNewSwitchMatrix.width, ((numColMuxed > 1)==true? (muxDecoder.width):0)) + widthArray + bufferarea/lengthCol; // added;
+				usedArea = areaArray + ((cell.writeVoltage > 1.5)==true? (wllevelshifter.area + bllevelshifter.area + sllevelshifter.area):0) + wlNewSwitchMatrix.area + slSwitchMatrix.area + 
 						((numColMuxed > 1)==true? (mux.area + muxDecoder.area):0) + multilevelSenseAmp.area  + multilevelSAEncoder.area + shiftAddWeight.area + shiftAddInput.area + ((numAdd > 1)==true? (adder.area+dff.area):0) + sarADC.area + bufferarea;
 				
 				areaADC = multilevelSenseAmp.area + multilevelSAEncoder.area + sarADC.area;
 				areaAccum = shiftAddWeight.area + shiftAddInput.area + ((numAdd > 1)==true? (adder.area+dff.area):0);
-				areaOther = ((cell.writeVoltage > 1.5)==true? (wllevelshifter.area + bllevelshifter.area + sllevelshifter.area):0) + wlNewSwitchMatrix.area + wlSwitchMatrix.area + slSwitchMatrix.area + ((numColMuxed > 1)==true? (mux.area + muxDecoder.area):0) + bufferarea;
+				areaOther = ((cell.writeVoltage > 1.5)==true? (wllevelshifter.area + bllevelshifter.area + sllevelshifter.area):0) + wlNewSwitchMatrix.area + slSwitchMatrix.area + ((numColMuxed > 1)==true? (mux.area + muxDecoder.area):0) + bufferarea;
 				
 				area = height * width;				
 				emptyArea = area - usedArea;
+
+				// cout << "\n================= RRAM (Crossbar) Area Breakdown (um^2) =================" << endl;
+				//  cout << "Array Core Area:           " << areaArray * 1e12 << endl;
+
+                 		// // In Parallel Mode, we use Switch Matrices instead of Decoders
+				//  if (cell.accessType == CMOS_access) {
+				//      cout << "WL Switch Matrix Area:     " << wlNewSwitchMatrix.area * 1e12 << endl;
+				//  } else {
+				//      cout << "WL Switch Matrix Area:     " << wlSwitchMatrix.area * 1e12 << endl;
+				//  }
+
+                 		// cout << "SL Switch Matrix Area:     " << slSwitchMatrix.area * 1e12 << endl;
+
+                 		// if (cell.writeVoltage > 1.5) {
+				//      cout << "WL Level Shifter Area:     " << wllevelshifter.area * 1e12 << endl;
+				//      cout << "BL Level Shifter Area:     " << bllevelshifter.area * 1e12 << endl;
+				//      cout << "SL Level Shifter Area:     " << sllevelshifter.area * 1e12 << endl;
+				//  }
+				//  if (numColMuxed > 1) {
+				//      cout << "MUX Area:                  " << mux.area * 1e12 << endl;
+				//      cout << "MUX Decoder Area:          " << muxDecoder.area * 1e12 << endl;
+				//  }
+				//  if (param->SARADC) {
+				//      cout << "SAR ADC Area:              " << sarADC.area * 1e12 << endl;
+				//  } else {
+				//      cout << "Multilevel SA Area:        " << multilevelSenseAmp.area * 1e12 << endl;
+				//      cout << "Multilevel SA Encoder Area:" << multilevelSAEncoder.area * 1e12 << endl;
+				//  }
+				//  if (numReadPulse > 1) cout << "ShiftAdd Input Area:       " << shiftAddInput.area * 1e12 << endl;
+				//  if (numCellPerSynapse > 1) cout << "ShiftAdd Weight Area:      " << shiftAddWeight.area * 1e12 << endl;
+				//  if (numAdd > 1) {
+				//      cout << "Adder Area:                " << adder.area * 1e12 << endl;
+				//      cout << "DFF Area:                  " << dff.area * 1e12 << endl;
+				//  }
+				//  cout << "-------------------------------------------------------------------------" << endl;
+				//  cout << "Used Area (Active Silicon):" << usedArea * 1e12 << endl;
+				//  cout << "Empty Area (White Space):  " << emptyArea * 1e12 << endl;
+				//  cout << "TOTAL SUBARRAY AREA:       " << area * 1e12 << endl;
+				//  cout << "=========================================================================\n" << endl;
 
 
 			} else if (BNNsequentialMode || XNORsequentialMode) {    
@@ -954,7 +2256,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 					double minMuxHeight = MAX(muxDecoder.height, mux.height);
 					mux.CalculateArea(minMuxHeight, widthArray, OVERRIDE);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculateUnitArea();
 					sarADC.CalculateArea(NULL, widthArray, NONE);
 				} else {
@@ -986,7 +2288,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 	}
 }
 
-void SubArray::CalculateLatency(double columnRes, const vector<double> &columnResistance, bool CalculateclkFreq) {   //calculate latency for different mode 
+void SubArray::CalculateLatency(double columnRes, const vector<double> &columnResistance, bool CalculateclkFreq, bool writeBack) {   //calculate latency for different mode 
 	if (!initialized) {
 		cout << "[Subarray] Error: Require initialization first!" << endl;
 	} else {
@@ -1109,14 +2411,14 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 						wlSwitchMatrix.CalculateLatency(1e20, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);
 					}
 					precharger.CalculateLatency(1e20, capCol, 1, numWriteOperationPerRow*numRow*activityRowWrite);
-					if (SARADC) {
+					if (param->SARADC) {
 						sarADC.CalculateLatency(1);
 					} else {
 						multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
 						multilevelSAEncoder.CalculateLatency(1e20, 1);
 					}					
 					if (numColMuxed > 1) {
-						mux.CalculateLatency(0, 0, 1);						
+						mux.CalculateLatency(1e20, 0, 1);						
 						// 1.4 update: more arguments for muxdecoder.calculatelatency
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
 					}					
@@ -1144,6 +2446,16 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 						readLatency += precharger.readLatency;
 						// readLatency += colDelay;	   
 						readLatency += multilevelSenseAmp.readLatency;
+
+						            // --- INJECT THIS DEBUG BLOCK ---
+                                        			//cout << "\n[DEBUG] SRAM Parallel Buffer Latency Breakdown:" << endl;
+                                        			//cout << "  - wlDecoder: " << wlDecoder.readLatency << " s" << endl;
+                                        			//cout << "  - precharger: " << precharger.readLatency << " s" << endl;
+                                        			//cout << "  - colDelay: " << colDelay << " s" << endl;
+                                        			//cout << "  - senseAmp: " << senseAmp.readLatency << " s" << endl;
+                                        			//cout << "  - Total SRAM Parallel readLatency: " << readLatency << " s\n" << endl;
+                                        			// -------------------------------
+
 
 						param->rowdelay = wlSwitchMatrix.readLatency + bufferlatency;
 						param->muxdelay = mux.readLatency+muxDecoder.readLatency;
@@ -1238,14 +2550,14 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				if (CalculateclkFreq || !param->synchronous) {
 					wlSwitchMatrix.CalculateLatency(1e20, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);
 					precharger.CalculateLatency(1e20, capCol, 1, numWriteOperationPerRow*numRow*activityRowWrite);					
-					if (SARADC) {
+					if (param->SARADC) {
 						sarADC.CalculateLatency(1);
 					} else {
 						multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
 						multilevelSAEncoder.CalculateLatency(1e20, 1);
 					}
 					if (numColMuxed > 1) {
-						mux.CalculateLatency(0, 0, 1);
+						mux.CalculateLatency(1e20, 0, 1);
 
 						// 1.4 update: new arguments for muxdecoder
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
@@ -1306,11 +2618,11 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				if (CalculateclkFreq || !param->synchronous) {				
 					wlSwitchMatrix.CalculateLatency(1e20, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);
 					if (numColMuxed>1) {
-						mux.CalculateLatency(colRamp, 0, 1);
+						mux.CalculateLatency(1e20, 0, 1);
 						// 1.4 update
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
 					}
-					if (SARADC) {
+					if (param->SARADC) {
 						sarADC.CalculateLatency(1);
 					} else {
 						multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
@@ -1365,8 +2677,791 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 					readLatency = readLatencyADC + readLatencyAccum + readLatencyOther;
 				}
 			}		
-		}
-		else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
+		
+
+
+
+	    } else if (cell.memCellType == Type::_2TnC) {
+
+                        double bitsPerCell = param->bitsPerCell;
+		        int numReadOperationPerRow = (int)ceil((double)numCol/numReadCellPerOperationNeuro);
+
+                        //Operation Counts (How many cycles to process the full array)
+                        double numReadCells = (int)ceil((double)numCol/numColMuxed);   //In how many batches are you reading (8 cols share 1 ADC)
+                        int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);  //hOW MANY WRITE CYCLES REQUIRED PER ROW
+
+                        //Calculate Driver Latencies (RC Delay of the wires)
+                        if (CalculateclkFreq || !param->synchronous) {
+
+                                
+				// =======================================================
+				// READ DRIVERS (RSL and RBL)
+				// =======================================================
+				
+				// RSL (Col): Drives vertically down the rows
+				rslDecoder.CalculateLatency(1e20, capRSL, NULL, resCol, numRow, 1, 0);
+				rslSwitchMatrix.CalculateLatency(1e20, capRSL, resCol, 1, 0);
+				
+				// RBL (Row): Drives horizontally across the columns
+				// Note: Adding this here to fix your missing RBL issue!
+				rblDecoder.CalculateLatency(1e20, capRBL, NULL, resRow, numCol, 1, 0);
+				rblSwitchMatrix.CalculateLatency(1e20, capRBL, resRow, 1, 0);
+				
+				// Calculate Mux delay for Bitline Sensing
+				if (numColMuxed > 1) {
+				        mux.CalculateLatency(1e20, 0, 1);
+				        muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
+				}
+				
+				// =======================================================
+				// WRITE PATH DRIVERS (WBL, SSL, WWL, WPL)
+				// 4 lines are driven. The slowest one gates the operation.
+				// =======================================================
+				
+				// WBL (Row - Plane): Drives horizontally across the columns
+				// wblDecoder.CalculateLatency(1e20, capWBL, NULL, resRow, numCol, 0, 1);
+				// wblSwitchMatrix.CalculateLatency(1e20, capWBL, resRow, 1, 1);
+
+				wblDecoder.CalculateLatency(1e20, capWBL, NULL, resRow, numCol, 1, 1);
+				wblSwitchMatrix.CalculateLatency(1e20, capWBL, resRow, 1, 1);
+				
+				// SSL (Col): Drives vertically down the rows
+				sslDecoder.CalculateLatency(1e20, capSSL, NULL, resCol, numRow, 0, 1);
+				sslSwitchMatrix.CalculateLatency(1e20, capSSL, resCol, 1, 1);
+				
+				// WWL (Row): Drives horizontally across the columns
+				wwlDecoder.CalculateLatency(1e20, capWWL, NULL, resRow, numCol, 0, 1);
+				wwlSwitchMatrix.CalculateLatency(1e20, capWWL, resRow, 1, 1);
+				
+				// WPL (Row): Drives horizontally across the columns
+				wplDecoder.CalculateLatency(1e20, capWPL, NULL, resRow, numCol, 0, 1);
+				wplSwitchMatrix.CalculateLatency(1e20, capWPL, resRow, 1, 1);
+				
+				
+                                //Sensisng Circuits
+                                if (param->SARADC) {
+                                        sarADC.CalculateLatency(1);
+                                } else {
+					multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
+                                        multilevelSAEncoder.CalculateLatency(1e20, 1);
+
+					multilevelSenseAmp.readLatency = 1e-9;
+                                }
+
+				double Trcd = 85e-9;
+				double Trp = 80e-9;
+
+                                //Total Read Latency
+                                if (CalculateclkFreq) {
+
+					colDelay = param->chargeDelay;
+        				readLatency += colDelay;
+
+					// --- QNDRO SELF-RESTORE PENALTY ---
+					if (cell.mem_rdo == Type::qndro) {
+
+	                                    if (writeBack) {
+
+						    // 1. Calculate Single-Row Read-Out Latency
+	                                	    // Parameters: (columnResistance, numColMuxed, numRead)
+	                                	    // numColMuxed = 1: Dedicated SA per column (no multiplexing)
+	                                	    // numRead = 1: Single sensing operation
+	                                	    currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
+	
+	                                	    // 2. Scale sensing latency for the entire subarray (row-by-row)
+	                                	    double senseLatencyTotal = currentSenseAmp.readLatency * numRow * 8;
+	
+	                                	        // Find the max latency of the write drivers
+	                                	    double maxWriteDriverLatency = 0;
+	                                	    maxWriteDriverLatency = MAX(maxWriteDriverLatency, wblSwitchMatrix.writeLatency + wblDecoder.writeLatency);
+	                                	    maxWriteDriverLatency = MAX(maxWriteDriverLatency, sslSwitchMatrix.writeLatency + sslDecoder.writeLatency);
+	                                	    maxWriteDriverLatency = MAX(maxWriteDriverLatency, wwlSwitchMatrix.writeLatency + wwlDecoder.writeLatency);
+	                                	    maxWriteDriverLatency = MAX(maxWriteDriverLatency, wplSwitchMatrix.writeLatency + wplDecoder.writeLatency);
+	
+	                                	    double writePulseTime = 10e-9;
+	                                	    int numWriteOperationPerRow = (int)ceil((double)numCol/numWriteCellPerOperationNeuro);
+	
+	                                	    // A full array write-back requires rewriting every row in the subarray sequentially
+	                                	    double writePhaseLatency = (maxWriteDriverLatency + writePulseTime) * bitsPerCell * numRow;
+	
+	                                	    // Total Refresh Latency = Read-Out (Sensing) + Write Phase
+	                                	    double writeBackLatency = senseLatencyTotal + writePhaseLatency;
+	
+	                                	    readLatency += writeBackLatency;
+	                                	}
+
+					}
+
+					else if (cell.mem_rdo == Type::dro) {
+    					    // 1. Calculate Single-Row Read-Out Latency
+                                            // Parameters: (columnResistance, numColMuxed, numRead)
+                                            // numColMuxed = 1: Dedicated SA per column (no multiplexing)
+                                            // numRead = 1: Single sensing operation
+                                            currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
+
+                                            // 2. Scale sensing latency for the entire subarray (row-by-row)
+                                            double senseLatencyTotal = currentSenseAmp.readLatency * numRow * bitsPerCell;
+
+						
+					    // Find the max latency of the write drivers needed for write-back
+    					    double maxWriteDriverLatency = 0;
+    					    // maxWriteDriverLatency = MAX(maxWriteDriverLatency, wblSwitchMatrix.writeLatency + wblDecoder.writeLatency);
+    					    // maxWriteDriverLatency = MAX(maxWriteDriverLatency, sslSwitchMatrix.writeLatency + sslDecoder.writeLatency);
+    					    // maxWriteDriverLatency = MAX(maxWriteDriverLatency, wwlSwitchMatrix.writeLatency + wwlDecoder.writeLatency);
+    					    // maxWriteDriverLatency = MAX(maxWriteDriverLatency, wplSwitchMatrix.writeLatency + wplDecoder.writeLatency);
+
+    					    maxWriteDriverLatency = MAX(maxWriteDriverLatency, wblSwitchMatrix.readLatency + wblDecoder.readLatency);
+                                            maxWriteDriverLatency = MAX(maxWriteDriverLatency, sslSwitchMatrix.readLatency + sslDecoder.readLatency);
+                                            maxWriteDriverLatency = MAX(maxWriteDriverLatency, wwlSwitchMatrix.readLatency + wwlDecoder.readLatency);
+                                            maxWriteDriverLatency = MAX(maxWriteDriverLatency, wplSwitchMatrix.readLatency + wplDecoder.readLatency);
+
+					    
+					    double writePulseTime = 10e-9;
+                                            int numWriteOperationPerRow = (int)ceil((double)numCol/numWriteCellPerOperationNeuro);
+
+                                            // A full array write-back requires rewriting every row in the subarray sequentially
+                                            //double writePhaseLatency = (maxWriteDriverLatency + writePulseTime + Twr) * numRow ;
+                                            double writePhaseLatency = (maxWriteDriverLatency + writePulseTime) * numRow * bitsPerCell;
+
+                                            // Total Refresh Latency = Read-Out (Sensing) + Write Phase
+                                            double writeBackLatency = senseLatencyTotal + writePhaseLatency;
+
+                                            readLatency += writeBackLatency;
+    					}
+
+
+					// Map 3D line parasitics to NeuroSim's calculated array parasitics
+					double resReadTransistor = cell.resMemCellOn; // Assuming worst-case ON resistance
+
+                                        // 1. Setup Delay: WBL and RBL are driven simultaneously
+        				// Calculate RC delay for WBL (Input line)
+        				double delay_WBL = 0.69 * resRow * capWBL; 
+
+        				// Calculate RC delay for RBL (Bias line)
+        				double delay_RBL = 0.69 * resRow * capRBL;
+
+        				// The setup time is governed by the slower of the two lines
+        				double delay_setup = max(delay_WBL, delay_RBL);
+
+        				// 2. Sensing Delay: Time taken for RSL to develop detectable current/voltage
+        				// This depends on the TR on-resistance and RSL capacitance
+        				//double delay_RSL = 0.69 * (resReadTransistor + resCellRSL * numRow) * capRSL;
+
+        				// 3. Peripheral Delay
+        				//double delay_peripherals = wlDecoder.readLatency + mux.readLatency + multilevelSenseAmp.readLatency;
+
+        				// Total Read Latency
+        				//readLatency = delay_setup + delay_RSL + delay_peripherals;
+        				readLatency = delay_setup;
+
+					//Driver Delay: Time to activate RSL
+                                        // 2TnC Driver Delay: WBL (Input), RBL (Drain Bias), RSL (Source Bias)
+					double wblPath = wblDecoder.readLatency + wblSwitchMatrix.readLatency;
+					double rblPath = rblDecoder.readLatency + rblSwitchMatrix.readLatency;
+					double rslPath = rslDecoder.readLatency + rslSwitchMatrix.readLatency;
+					
+					double driverDelay = MAX(wblPath, MAX(rblPath, rslPath))
+					                     + ((numColMuxed > 1) ? (mux.readLatency + muxDecoder.readLatency) : 0);
+					
+					readLatency += driverDelay;
+
+                                        //Sensing Delay (ADC + Encoder)
+                                        if (param->SARADC) {
+                                                readLatency += sarADC.readLatency;
+                                        } else {
+                                                readLatency += multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency;
+                                        }
+
+                                        //Scaling factor (beta)
+                                        readLatency *= (validated==true? param->beta : 1);
+
+                                }
+			}
+
+
+                        //Write Latency
+                        if (!CalculateclkFreq) {
+                                //Max of all 4 switch matrices
+                                double maxDriverLatency = 0;
+                                maxDriverLatency = MAX(maxDriverLatency, wblSwitchMatrix.writeLatency + wblDecoder.writeLatency);
+                                maxDriverLatency = MAX(maxDriverLatency, sslSwitchMatrix.writeLatency + sslDecoder.writeLatency);
+                                maxDriverLatency = MAX(maxDriverLatency, wwlSwitchMatrix.writeLatency + wwlDecoder.writeLatency);
+                                maxDriverLatency = MAX(maxDriverLatency, wplSwitchMatrix.writeLatency + wplDecoder.writeLatency);
+
+                                //Calculate Capacitor Charging Time (RC Delay)
+                                //tau = R * C
+                                //double totalCap = cell.numCapacitors * cell.capacitance; //Load of the NvCAPs
+                                //double tau = cell.resistanceAccess * totalCap;           //Time constant
+
+                                //double writePulseTime = 3.0 * tau;
+
+				//double writePulseTime = cell.writePulseWidth;
+				double writePulseTime = 10e-9;
+
+				// 2-Cycle Parallel Write Scheme
+				// Cycle 1: Write all '1's (WPL = High, Target WBLs = Low, Inhibit WBLs = High)
+				// Cycle 2: Write all '0's (WPL = Low, Target WBLs = High, Inhibit WBLs = Low)
+				// int writeCyclesPerCell = 2;
+				
+				// Total Write Latency = (Driver Setup + Pulse Duration) * 2 cycles * Num Column Operations
+				writeLatency = (maxDriverLatency + writePulseTime) * numWriteOperationPerRow * numRow;
+
+                                // writeLatency = (maxDriverLatency + writePulseTime) * numWriteOperationPerRow;
+
+
+                                //Read Latency (Non-Clocked Mode)
+    				if (param->synchronous) {
+    				        readLatencyADC = numColMuxed;
+    				        readLatencyAccum = 0;
+    				        if (numAdd > 1) {
+    				                readLatencyAccum += numColMuxed*(numAdd-1) * (ceil(adder.readLatency*clkFreq)-1);
+    				        }
+    				} else {
+    				        double sensingDelay = (param->SARADC ? sarADC.readLatency : (multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency));
+
+					// 2TnC Driver Delay: WBL (Input), RBL (Drain Bias), RSL (Source Bias)
+					double wblPath = wblDecoder.readLatency + wblSwitchMatrix.readLatency;
+					double rblPath = rblDecoder.readLatency + rblSwitchMatrix.readLatency;
+					double rslPath = rslDecoder.readLatency + rslSwitchMatrix.readLatency;
+					
+					double driverDelay = MAX(wblPath, MAX(rblPath, rslPath))
+					                     + ((numColMuxed > 1) ? (mux.readLatency + muxDecoder.readLatency) : 0);
+
+    				        readLatencyADC = (driverDelay + sensingDelay) * numColMuxed * (validated==true? param->beta : 1);
+    				        readLatencyAccum = MAX(((numAdd>1) ? adder.readLatency * numColMuxed*(numAdd-1) : 0) 
+						+ ((numCellPerSynapse > 1) ? shiftAddWeight.readLatency : 0)
+						+ ((numReadPulse > 1) ? shiftAddInput.readLatency : 0) - readLatencyADC, 0.0);
+    				}
+
+    				//Accumulation Latency (Digital Adder/Shift)
+    				if (numAdd > 1) {
+    				        adder.CalculateLatency(1e20, dff.capTgDrain, 1);
+    				        dff.CalculateLatency(1e20, 1);
+    				}
+    				if (numCellPerSynapse > 1) 
+					shiftAddWeight.CalculateLatency(numColMuxed);
+    				if (numReadPulse > 1) 
+					shiftAddInput.CalculateLatency(ceil(numColMuxed/numCellPerSynapse));
+
+    				readLatency = readLatencyADC + readLatencyAccum;
+			}
+
+			 // cout << "2TnC Read Latency Breakdown " << endl;
+                         // cout << "numReadCellPerOperationNeuro: " << numReadCellPerOperationNeuro << endl;
+                         // cout << "numReadOperationPerRow: " << numReadOperationPerRow << endl;
+                         // cout << "numReadCells: " << numReadCells << endl;
+                         // cout << "rslDecoder.readLatency: " << rslDecoder.readLatency << endl;
+                         // cout << "rslSwitchMatrix.readLatency: " << rslSwitchMatrix.readLatency << endl;
+                         // cout << "mux.readLatency: " << mux.readLatency << endl;
+                         // cout << "muxDecoder.readLatency: " << muxDecoder.readLatency << endl;
+                         // cout << "sarADC.readLatency: " << sarADC.readLatency << endl;
+                         // // cout << "multilevelSenseAmp.readLatency: " << multilevelSenseAmp.readLatency << endl;
+                         // // cout << "multilevelSAEncoder.readLatency: " << multilevelSAEncoder.readLatency << endl;
+                         // cout << "readLatencyADC: " << readLatencyADC << endl;
+                         // cout << "readLatencyAccum: " << readLatencyAccum << endl;
+                         // 
+			 // cout << "2TnC Write Latency Breakdown " << endl;
+			 // cout << "CapWBL: " << capWBL << endl;
+			 // cout << "CapWWL: " << capWWL << endl;
+			 // cout << "CapWPL: " << capWPL << endl;
+			 // cout << "CapSSL: " << capSSL << endl;
+			 // cout << "wblSwitchMatrix.writeLatency: " << wblSwitchMatrix.writeLatency << endl;
+			 // cout << "wblSwitchMatrix.writeLatency: " << wblSwitchMatrix.writeLatency << endl;
+			 // cout << "wblSwitchMatrix.writeLatency: " << wblSwitchMatrix.writeLatency << endl;
+			 // cout << "wplSwitchMatrix.writeLatency: " << wplSwitchMatrix.writeLatency << endl;
+			 // cout << "wwlSwitchMatrix.writeLatency: " << wwlSwitchMatrix.writeLatency << endl;
+			 // cout << "sslSwitchMatrix.writeLatency: " << sslSwitchMatrix.writeLatency << endl;
+			 // cout << "wblDecoder.writeLatency: " << wblDecoder.writeLatency << endl;
+			 // cout << "wwlDecoder.writeLatency: " << wwlDecoder.writeLatency << endl;
+			 // cout << "wplDecoder.writeLatency: " << wplDecoder.writeLatency << endl;
+			 // cout << "sslDecoder.writeLatency: " << sslDecoder.writeLatency << endl;
+			 // cout << "numWriteOperationPerRow: " << numWriteOperationPerRow << endl;
+			 // //cout << ": " <<  << endl;
+		
+		
+		} else if (cell.memCellType == Type::_1TnC) {
+        		double bitsPerCell = param->bitsPerCell;
+			int numReadOperationPerRow = (int)ceil((double)numCol/numReadCellPerOperationNeuro);
+
+                        //Operation Counts (How many cycles to process the full array)
+                        double numReadCells = (int)ceil((double)numCol/numColMuxed);   //In how many batches are you reading (8 cols share 1 ADC)
+                        int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);  //hOW MANY WRITE CYCLES REQUIRED PER ROW
+
+                        //Calculate Driver Latencies (RC Delay of the wires)
+                        if (CalculateclkFreq || !param->synchronous) {
+
+				// READ DRIVERS (BL)
+				// BL (Row - Plane): Drives horizontally across the columns
+				blDecoder.CalculateLatency(1e20, capBL, NULL, resRow, numCol, 0, 1);
+				blSwitchMatrix.CalculateLatency(1e20, capBL, resRow, 0, 1);
+				
+				// Calculate Mux delay
+				if (numColMuxed > 1) {
+				        mux.CalculateLatency(1e20, 0, 1);
+				        muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
+				}
+				
+				// WRITE PATH DRIVERS (WL, PL)
+				// 2 lines are driven. The slowest one gates the operation.
+				// WL (Row): Wordline (Transistor Gate) - Drives horizontally across the columns
+				wlDecoder.CalculateLatency(1e20, capWL, NULL, resRow, numCol, 1, 1);
+				wlSwitchMatrix.CalculateLatency(1e20, capWL, resRow, 1, 1);
+				
+				// PL (Column): Write Plate Line - Drives vertically down the rows
+				plDecoder.CalculateLatency(1e20, capPL, NULL, resCol, numRow, 1, 1);
+				plSwitchMatrix.CalculateLatency(1e20, capPL, resCol, 1, 1);
+				
+				
+                                //Sensisng Circuits
+                                if (param->SARADC) {
+                                        sarADC.CalculateLatency(1);
+                                } else {
+                                        multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
+                                        multilevelSAEncoder.CalculateLatency(1e20, 1);
+
+                                        multilevelSenseAmp.readLatency = 1e-9;
+                                }
+
+                                double Trc = 185e-9;
+                                double Trcd = 85e-9;
+                                double Trp = 80e-9;
+
+                                //Total Read Latency
+                                if (CalculateclkFreq) {
+
+                                        colDelay = param->chargeDelay;
+                                        readLatency += colDelay;
+
+                                        // --- QNDRO SELF-RESTORE PENALTY ---
+                                        if (cell.mem_rdo == Type::qndro) {
+
+                                            if (writeBack) {
+
+                                                    // 1. Calculate Single-Row Read-Out Latency
+                                                    // Parameters: (columnResistance, numColMuxed, numRead)
+                                                    // numColMuxed = 1: Dedicated SA per column (no multiplexing)
+                                                    // numRead = 1: Single sensing operation
+                                                    currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
+
+                                                    // 2. Scale sensing latency for the entire subarray (row-by-row)
+                                                    double senseLatencyTotal = currentSenseAmp.readLatency * numRow * 8;
+
+                                                        // Find the max latency of the write drivers
+                                                    double maxWriteDriverLatency = 0;
+                                                    maxWriteDriverLatency = MAX(maxWriteDriverLatency, blSwitchMatrix.writeLatency + blDecoder.writeLatency);
+                                                    maxWriteDriverLatency = MAX(maxWriteDriverLatency, wlSwitchMatrix.writeLatency + wlDecoder.writeLatency);
+                                                    maxWriteDriverLatency = MAX(maxWriteDriverLatency, plSwitchMatrix.writeLatency + plDecoder.writeLatency);
+
+                                                    double writePulseTime = 10e-9;
+                                                    int numWriteOperationPerRow = (int)ceil((double)numCol/numWriteCellPerOperationNeuro);
+
+                                                    // A full array write-back requires rewriting every row in the subarray sequentially
+                                                    double writePhaseLatency = (maxWriteDriverLatency + writePulseTime) * bitsPerCell * numRow;
+
+                                                    // Total Refresh Latency = Read-Out (Sensing) + Write Phase
+                                                    double writeBackLatency = senseLatencyTotal + writePhaseLatency;
+
+                                                    readLatency += writeBackLatency;
+                                                }
+
+                                        }
+
+                                        else if (cell.mem_rdo == Type::dro) {
+                                            // // 1. Calculate Single-Row Read-Out Latency
+                                            // // Parameters: (columnResistance, numColMuxed, numRead)
+                                            // // numColMuxed = 1: Dedicated SA per column (no multiplexing)
+                                            // // numRead = 1: Single sensing operation
+                                            // currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
+
+                                            // // 2. Scale sensing latency for the entire subarray (row-by-row)
+                                            // double senseLatencyTotal = currentSenseAmp.readLatency * numRow * bitsPerCell;
+
+
+                                            // // Find the max latency of the write drivers needed for write-back
+                                            // double maxWriteDriverLatency = 0;
+                                            // // maxWriteDriverLatency = MAX(maxWriteDriverLatency, blSwitchMatrix.writeLatency + blDecoder.writeLatency);
+                                            // // maxWriteDriverLatency = MAX(maxWriteDriverLatency, wlSwitchMatrix.writeLatency + wlDecoder.writeLatency);
+                                            // // maxWriteDriverLatency = MAX(maxWriteDriverLatency, plSwitchMatrix.writeLatency + plDecoder.writeLatency);
+
+                                            // maxWriteDriverLatency = MAX(maxWriteDriverLatency, blSwitchMatrix.readLatency + blDecoder.readLatency);
+					    // maxWriteDriverLatency = MAX(maxWriteDriverLatency, wlSwitchMatrix.readLatency + wlDecoder.readLatency);
+					    // maxWriteDriverLatency = MAX(maxWriteDriverLatency, plSwitchMatrix.readLatency + plDecoder.readLatency);
+
+					    // double writePulseTime = 10e-9;
+                                            // int numWriteOperationPerRow = (int)ceil((double)numCol/numWriteCellPerOperationNeuro);
+
+                                            // // A full array write-back requires rewriting every row in the subarray sequentially
+                                            // //double writePhaseLatency = (maxWriteDriverLatency + writePulseTime + Twr) * numRow ;
+                                            // double writePhaseLatency = (maxWriteDriverLatency + writePulseTime) * numRow * bitsPerCell;
+
+                                            // // Total Refresh Latency = Read-Out (Sensing) + Write Phase
+                                            // double writeBackLatency = senseLatencyTotal + writePhaseLatency;
+
+                                            //double writeBackLatency = Trc * (numRow * activityRowRead);
+                                             double writeBackLatency = Trc ;
+
+					  //  cout << "activityRowRead: " << activityRowRead << endl;
+					  //  cout << "writeBackLatency: " << writeBackLatency << endl;
+
+					    readLatency += writeBackLatency;
+                                        }
+
+
+                                        if (cell.mem_rdo == Type::ndro) {
+					// 1. Setup Delay: BL
+                                        // Calculate RC delay for BL (Input line)
+                                        double delay_BL = 0.69 * resRow * capBL;
+
+					// Calculate RC delay for WL
+                                        double delay_WL = 0.69 * resRow * capWL;
+
+                                        // The setup time is governed by the slower of the two lines
+                                        double delay_setup = max(delay_BL, delay_WL);
+
+					readLatency += delay_setup;
+
+					double blPathDelay = blDecoder.readLatency + blSwitchMatrix.readLatency;
+					double wlPathDelay = wlDecoder.readLatency + wlSwitchMatrix.readLatency;
+					double plPathDelay = plDecoder.readLatency + plSwitchMatrix.readLatency; 
+					
+					// Add the slowest parallel driver path to the total latency
+					double driverDelay = MAX(blPathDelay, wlPathDelay);
+					driverDelay = MAX(driverDelay, plPathDelay);
+
+					readLatency += driverDelay;
+
+
+                                        //Mux Delay
+                                        readLatency += ((numColMuxed > 1) ? (mux.readLatency + muxDecoder.readLatency) : 0);
+
+                                        //Sensing Delay (ADC + Encoder)
+                                        if (param->SARADC) {
+                                                readLatency += sarADC.readLatency;
+                                        } else {
+                                                readLatency += multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency;
+                                        }
+
+                                        //Scaling factor (beta)
+                                        readLatency *= (validated==true? param->beta : 1);
+
+					}
+
+                                }
+			}
+
+
+                        //Write Latency
+                        if (!CalculateclkFreq) {
+                                double Trc = 185e-9;
+				if (cell.mem_rdo == Type::dro) {
+
+					 //double writeBackLatency = Trc * (numRow * activityRowRead);
+					double writeBackLatency = Trc;
+
+                                            readLatency += writeBackLatency;
+
+					    readLatencyADC = 0;
+                                        readLatencyAccum = 0;
+
+					                                            //cout << "NON CLOCKED writeBackLatency: " << writeBackLatency << endl;
+
+				} else {
+
+				
+				//Max of all 3 switch matrices
+                                double maxDriverLatency = 0;
+                                maxDriverLatency = MAX(maxDriverLatency, blSwitchMatrix.writeLatency + blDecoder.writeLatency);
+                                maxDriverLatency = MAX(maxDriverLatency, wlSwitchMatrix.writeLatency + wlDecoder.writeLatency);
+                                maxDriverLatency = MAX(maxDriverLatency, plSwitchMatrix.writeLatency + plDecoder.writeLatency);
+
+                                //Calculate Capacitor Charging Time (RC Delay)
+                                //tau = R * C
+                                //double totalCap = cell.numCapacitors * cell.capacitance; //Load of the NvCAPs
+                                //double tau = cell.resistanceAccess * totalCap;           //Time constant
+
+                                //double writePulseTime = 3.0 * tau;
+
+                                //double writePulseTime = cell.writePulseWidth;
+                                double writePulseTime = 10e-9;
+
+                                // 2-Cycle Parallel Write Scheme
+                                // Cycle 1: Write all '1's (WPL = High, Target WBLs = Low, Inhibit WBLs = High)
+                                // Cycle 2: Write all '0's (WPL = Low, Target WBLs = High, Inhibit WBLs = Low)
+                                // int writeCyclesPerCell = 2;
+
+                                // Total Write Latency = (Driver Setup + Pulse Duration) * 2 cycles * Num Column Operations
+                                writeLatency = (maxDriverLatency + writePulseTime) * numWriteOperationPerRow * numRow;
+
+                                // writeLatency = (maxDriverLatency + writePulseTime) * numWriteOperationPerRow;
+
+
+                                              cout << "YOU SHOULD NOT BE PRINTING "<< endl;
+
+				//Read Latency (Non-Clocked Mode)
+                                if (param->synchronous) {
+                                        readLatencyADC = numColMuxed;
+                                        readLatencyAccum = 0;
+                                        if (numAdd > 1) {
+                                                readLatencyAccum += numColMuxed*(numAdd-1) * (ceil(adder.readLatency*clkFreq)-1);
+                                        }
+                                } else {
+                                        double sensingDelay = (param->SARADC ? sarADC.readLatency : (multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency));
+
+                                        double blPathDelay = blDecoder.readLatency + blSwitchMatrix.readLatency;
+                                        double wlPathDelay = wlDecoder.readLatency + wlSwitchMatrix.readLatency;
+                                        double plPathDelay = plDecoder.readLatency + plSwitchMatrix.readLatency;
+
+                                        // Add the slowest parallel driver path to the total latency
+                                        double driverDelay = MAX(blPathDelay, wlPathDelay);
+                                        driverDelay = MAX(driverDelay, plPathDelay);
+
+					// Add the slowest parallel driver path to the total latency
+                                        driverDelay += ((numColMuxed > 1) ? (mux.readLatency + muxDecoder.readLatency) : 0);
+
+                                        readLatencyADC = (driverDelay + sensingDelay) * numColMuxed * (validated==true? param->beta : 1);
+                                        readLatencyAccum = MAX(((numAdd>1) ? adder.readLatency * numColMuxed*(numAdd-1) : 0)
+                                                + ((numCellPerSynapse > 1) ? shiftAddWeight.readLatency : 0)
+                                                + ((numReadPulse > 1) ? shiftAddInput.readLatency : 0) - readLatencyADC, 0.0);
+                                }
+
+                                //Accumulation Latency (Digital Adder/Shift)
+                                if (numAdd > 1) {
+                                        adder.CalculateLatency(1e20, dff.capTgDrain, 1);
+                                        dff.CalculateLatency(1e20, 1);
+                                }
+                                if (numCellPerSynapse > 1)
+                                        shiftAddWeight.CalculateLatency(numColMuxed);
+                                if (numReadPulse > 1)
+                                        shiftAddInput.CalculateLatency(ceil(numColMuxed/numCellPerSynapse));
+
+                                readLatency = readLatencyADC + readLatencyAccum;
+				}
+                        }
+
+			// cout << "\n================ 1TnC Block Latency ================" << endl;
+        		// cout << "--- Read Path ---" << endl;
+        		// if (wlDecoder.initialized) cout << "WL Decoder Read Latency:       " << wlDecoder.readLatency << " ns" << endl;
+        		// if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Read Latency: " << wlSwitchMatrix.readLatency << " ns" << endl;
+        		// if (blDecoder.initialized) cout << "BL Decoder Read Latency:       " << blDecoder.readLatency << " ns" << endl;
+        		// if (blSwitchMatrix.initialized) cout << "BL Switch Matrix Read Latency: " << blSwitchMatrix.readLatency << " ns" << endl;
+        		// if (plDecoder.initialized) cout << "PL Decoder Read Latency:       " << plDecoder.readLatency << " ns" << endl;
+        		// if (plSwitchMatrix.initialized) cout << "PL Switch Matrix Read Latency: " << plSwitchMatrix.readLatency << " ns" << endl;
+
+        		// if (numColMuxed > 1) {
+        		//     if (muxDecoder.initialized) cout << "MUX Decoder Read Latency:      " << muxDecoder.readLatency << " ns" << endl;
+        		//     if (mux.initialized) cout << "MUX Read Latency:              " << mux.readLatency << " ns" << endl;
+        		// }
+        		// if (currentSenseAmp.initialized) {
+        		//     cout << "Current Sense Amp Read Latency:" << currentSenseAmp.readLatency << " ns" << endl;
+        		// }
+        		// if (param->SARADC) {
+        		//     if (sarADC.initialized) cout << "SAR ADC Read Latency:          " << sarADC.readLatency << " ns" << endl;
+        		// } else {
+        		//     if (multilevelSenseAmp.initialized) cout << "Multilevel SA Read Latency:    " << multilevelSenseAmp.readLatency << " ns" << endl;
+        		//     if (multilevelSAEncoder.initialized) cout << "Multilevel SA Encoder Latency: " << multilevelSAEncoder.readLatency << " ns" << endl;
+        		// }
+        		// if (numAdd > 1) {
+        		//     if (adder.initialized) cout << "Adder Read Latency:            " << adder.readLatency << " ns" << endl;
+        		//     if (dff.initialized) cout << "DFF Read Latency:              " << dff.readLatency << " ns" << endl;
+        		// }
+        		// if (numCellPerSynapse > 1) {
+        		//     if (shiftAddWeight.initialized) cout << "ShiftAdd Weight Read Latency:  " << shiftAddWeight.readLatency << " ns" << endl;
+        		// }
+        		// if (numReadPulse > 1) {
+        		//     if (shiftAddInput.initialized) cout << "ShiftAdd Input Read Latency:   " << shiftAddInput.readLatency << " ns" << endl;
+        		// }
+
+        		// cout << "--- Write Path ---" << endl;
+        		// if (wlDecoder.initialized) cout << "WL Decoder Write Latency:      " << wlDecoder.writeLatency << " ns" << endl;
+        		// if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Write Latency:" << wlSwitchMatrix.writeLatency << " ns" << endl;
+        		// if (blDecoder.initialized) cout << "BL Decoder Write Latency:      " << blDecoder.writeLatency << " ns" << endl;
+        		// if (blSwitchMatrix.initialized) cout << "BL Switch Matrix Write Latency:" << blSwitchMatrix.writeLatency << " ns" << endl;
+        		// if (plDecoder.initialized) cout << "PL Decoder Write Latency:      " << plDecoder.writeLatency << " ns" << endl;
+        		// if (plSwitchMatrix.initialized) cout << "PL Switch Matrix Write Latency:" << plSwitchMatrix.writeLatency << " ns" << endl;
+
+        		// if (cell.writeVoltage > 1.5) {
+        		//     if (wlLevelShifter.initialized) cout << "WL Level Shifter Write Latency:" << wlLevelShifter.writeLatency << " ns" << endl;
+        		//     if (blLevelShifter.initialized) cout << "BL Level Shifter Write Latency:" << blLevelShifter.writeLatency << " ns" << endl;
+        		//     if (plLevelShifter.initialized) cout << "PL Level Shifter Write Latency:" << plLevelShifter.writeLatency << " ns" << endl;
+        		// }
+
+        		// // --- Destructive Read-Out Write-Back Check ---
+        		// if (cell.mem_rdo == Type::dro) {
+        		//     cout << "---------------- DRO Penalty -----------------------" << endl;
+        		//     if (wlDecoder.initialized) cout << "[Write-Back] WL Decoder:       " << wlDecoder.writeLatency << " ns" << endl;
+        		//     if (wlSwitchMatrix.initialized) cout << "[Write-Back] WL SwitchMatrix:  " << wlSwitchMatrix.writeLatency << " ns" << endl;
+        		//     if (blDecoder.initialized) cout << "[Write-Back] BL Decoder:       " << blDecoder.writeLatency << " ns" << endl;
+        		//     if (blSwitchMatrix.initialized) cout << "[Write-Back] BL SwitchMatrix:  " << blSwitchMatrix.writeLatency << " ns" << endl;
+        		//     if (plDecoder.initialized) cout << "[Write-Back] PL Decoder:       " << plDecoder.writeLatency << " ns" << endl;
+        		//     if (plSwitchMatrix.initialized) cout << "[Write-Back] PL SwitchMatrix:  " << plSwitchMatrix.writeLatency << " ns" << endl;
+        		//     cout << "----------------------------------------------------" << endl;
+        		// } else {
+        		//     cout << "Mode: NDRO (No Write-Back Latency Penalty)" << endl;
+        		// }
+        		// cout << "====================================================" << endl;
+
+
+		} else if (cell.memCellType == Type::_1T1C) {
+        		 int numReadOperationPerRow = (int)ceil((double)numCol/numReadCellPerOperationNeuro);
+        		 int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+
+        		 double Trc = 60e-9;
+
+			 if (CalculateclkFreq || !param->synchronous) {
+        		     // BL (Col Mode)
+        		     blDecoder.CalculateLatency(1e20, capBL, NULL, resCol, numRow, 1, 0);
+        		     blSwitchMatrix.CalculateLatency(1e20, capBL, resCol, 1, 0);
+
+        		     if (numColMuxed > 1) {
+        		         mux.CalculateLatency(1e20, 0, 1);
+        		         muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
+        		     }
+
+        		     // WL (Row Mode)
+        		     wlDecoder.CalculateLatency(1e20, capWL, NULL, resRow, numCol, 0, 1);
+        		     wlSwitchMatrix.CalculateLatency(1e20, capWL, resRow, 1, 1);
+
+        		     if (param->SARADC) {
+        		         sarADC.CalculateLatency(1);
+        		     } else {
+        		         multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
+        		         multilevelSAEncoder.CalculateLatency(1e20, 1);
+        		     }
+
+        		     if (CalculateclkFreq) {
+
+				     } else if (cell.memCellType == Type::_1T1C) {
+						// 1. Normal Inference Operation (Destructive Read-Out)
+
+						// Row Cycle Time (Trc): Total time to access ONE row and write it back
+						double Trc = 60e-9;
+
+						// Split the cycle into the Read phase and the Write-Back phase
+						double arrayReadPhase = Trc / 2.0;
+						double writeBackPhase = Trc ;
+
+						// CIM parallel read allows simultaneous charge dumping,
+						// but the Write-Back MUST be completely serialized row-by-row.
+						double serializedRows = numRow * activityRowRead;
+
+						// Total DRO penalty is the write-back time * every row that was destroyed
+						double totalWriteBackLatency = writeBackPhase * serializedRows;
+
+						// Add the explicit serialized write-back hardware lockout time
+						readLatency += totalWriteBackLatency;
+
+						// 2. Distributed Refresh Latency Penalty (Statistical Availability)
+
+						// Retention time before 1T1C loses charge
+						// double tRefresh = 32e-3; // 32 ms
+						double tRefresh = 20.48e-3; // 20.48 ms
+
+						// Calculate how often a single row must be refreshed
+						double tRefreshPerRow = tRefresh / numRow;
+
+						// A refresh event only restores ONE row, so it only takes 1 Trc
+						double refreshEventLatency = Trc;
+
+						// Calculate Refresh Duty Cycle (Hardware Lockout Percentage)
+						double refreshDutyCycle = refreshEventLatency / tRefreshPerRow;
+
+						// Apply the Statistical Penalty to the Total Read Latency
+						readLatency = readLatency * (1.0 + refreshDutyCycle);
+	
+
+
+
+
+            		 	    // colDelay = param->chargeDelay;
+            		 	    // readLatency += colDelay;
+
+            		 	    // // // --- DRAM Destructive Read Penalty (DRO) ---
+            		 	    // // // Data is destroyed upon reading, requiring an immediate write-back pulse
+            		 	    // // currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
+            		 	    // // double senseLatencyTotal = currentSenseAmp.readLatency * 1; 
+            		 	    // // 
+            		 	    // // // Find the slowest driver for the write-back phase
+            		 	    // // double maxWriteDriverLatency = MAX(blSwitchMatrix.readLatency + blDecoder.readLatency, 
+            		 	    // //                                    wlSwitchMatrix.readLatency + wlDecoder.readLatency);
+            		 	    // // double writePhaseLatency = maxWriteDriverLatency + 10e-9; // 10ns write pulse width
+            		 	    // // 
+            		 	    // // // Add the Write-Back penalty to the total Read cycle
+            		 	    // // readLatency += (senseLatencyTotal + writePhaseLatency);
+            		 	    // // // -------------------------------------------
+
+            		 	    // // double delay_BL = 0.69 * resCol * capBL;
+            		 	    // // double delay_WL = 0.69 * resRow * capWL;
+            		 	    // // readLatency += MAX(delay_BL, delay_WL);
+
+            		 	    // // double blPathDelay = blDecoder.readLatency + blSwitchMatrix.readLatency;
+            		 	    // // double wlPathDelay = wlDecoder.readLatency + wlSwitchMatrix.readLatency;
+            		 	    // // readLatency += MAX(blPathDelay, wlPathDelay);
+
+            		 	    // // readLatency += ((numColMuxed > 1) ? (mux.readLatency + muxDecoder.readLatency) : 0);
+            		 	    // // readLatency += (param->SARADC ? sarADC.readLatency : (multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency));
+            		 	    // // readLatency *= (validated==true? param->beta : 1);
+
+				    // double writeBackLatency = Trc * (numRow * activityRowRead);
+
+        			    // // 1T1C DRAM Refresh Latency Penalty (Statistical Availability Model)
+        			    // 
+        			    // // 1. Retention Parameters
+        			    // double tRefresh = 32e-3; // 32 ms retention time
+        			    // double tRefreshPerRow = tRefresh / numRow; // 62.5 us for 512 rows
+
+        			    // // 2. Latency of a Single Refresh Event
+        			    // // A refresh only exercises the Array and Routing Drivers, NOT the ADCs or Accumulators.
+        			    // // It consists of the peripheral delays + wire RC delays + the physical write-back pulse.
+        			    // double refreshWriteBackPulse = 10e-9; // ~10ns physical charge restoration time
+        			    // 
+        			    // double refreshEventLatency = wlDecoder.readLatency + wlSwitchMatrix.readLatency 
+        			    //                            + blDecoder.readLatency + blSwitchMatrix.readLatency 
+        			    //                            + delay_setup // Wire RC charge-sharing delay
+        			    //                            + refreshWriteBackPulse; 
+
+        			    // // 3. Calculate Refresh Duty Cycle (Hardware Lockout Percentage)
+        			    // // Example: If a refresh takes 20ns, and happens every 62,500ns, the array is locked 0.032% of the time.
+        			    // double refreshDutyCycle = refreshEventLatency / tRefreshPerRow;
+
+        			    // // 4. Apply Statistical Penalty to Total Read Latency
+        			    // // By multiplying by (1 + DutyCycle), we statistically distribute the refresh collision stall-time 
+        			    // // across all inference operations.
+        			    // readLatency = readLatency * (1.0 + refreshDutyCycle);        
+				    // 
+				    // readLatency += writeBackLatency;
+            		 	}
+        		 }
+
+        		 if (!CalculateclkFreq) {
+        		     double maxDriverLatency = MAX(blSwitchMatrix.writeLatency + blDecoder.writeLatency, wlSwitchMatrix.writeLatency + wlDecoder.writeLatency);
+        		     writeLatency = (maxDriverLatency + 10e-9) * numWriteOperationPerRow * numRow;
+
+        		     if (param->synchronous) {
+        		         readLatencyADC = numColMuxed;
+        		         readLatencyAccum = 0;
+        		         if (numAdd > 1) readLatencyAccum += numColMuxed*(numAdd-1) * (ceil(adder.readLatency*clkFreq)-1);
+        		     } else {
+        		         double sensingDelay = (param->SARADC ? sarADC.readLatency : (multilevelSenseAmp.readLatency + multilevelSAEncoder.readLatency));
+        		         double driverDelay = MAX(blDecoder.readLatency + blSwitchMatrix.readLatency, wlDecoder.readLatency + wlSwitchMatrix.readLatency);
+        		         driverDelay += ((numColMuxed > 1) ? (mux.readLatency + muxDecoder.readLatency) : 0);
+
+        		         readLatencyADC = (driverDelay + sensingDelay) * numColMuxed * (validated==true? param->beta : 1);
+        		         readLatencyAccum = MAX(((numAdd>1) ? adder.readLatency * numColMuxed*(numAdd-1) : 0) + ((numCellPerSynapse > 1) ? shiftAddWeight.readLatency : 0) + ((numReadPulse > 1) ? shiftAddInput.readLatency : 0) - readLatencyADC, 0.0);
+        		     }
+
+        		     if (numAdd > 1) {
+        		         adder.CalculateLatency(1e20, dff.capTgDrain, 1);
+        		         dff.CalculateLatency(1e20, 1);
+        		     }
+        		     if (numCellPerSynapse > 1) shiftAddWeight.CalculateLatency(numColMuxed);
+        		     if (numReadPulse > 1) shiftAddInput.CalculateLatency(ceil(numColMuxed/numCellPerSynapse));
+
+        		     readLatency = readLatencyADC + readLatencyAccum;
+        		}
+
+			 readLatency = 0;
+			 readLatency = 60e-9;
+		} else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
 			if (conventionalSequential) {
 				double capBL = lengthCol * 0.2e-15/1e-6;
 				double colRamp = 0;
@@ -1386,11 +3481,11 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 						wlDecoderDriver.CalculateLatency(wlDecoder.rampOutput, capRow1, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);										
 					}					
 					if (numColMuxed > 1) {
-						mux.CalculateLatency(colRamp, 0, 1);
+						mux.CalculateLatency(1e20, 0, 1);
 						// 1.4 update
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
 					}
-					if (SARADC) {
+					if (param->SARADC) {
 						sarADC.CalculateLatency(1);
 					} else {
 						multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
@@ -1499,11 +3594,11 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 						wlSwitchMatrix.CalculateLatency(1e20, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);
 					}
 					if (numColMuxed>1) {
-						mux.CalculateLatency(colRamp, 0, 1);
+						mux.CalculateLatency(1e20, 0, 1);
 						// 1.4 update
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
 					}
-					if (SARADC) {
+					if (param->SARADC) {
 						sarADC.CalculateLatency(1);
 					} else {
 						multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
@@ -1556,6 +3651,51 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 					}
 					readLatency = readLatencyADC + readLatencyAccum + readLatencyOther;
 				}
+
+				 // cout << "\n================ RRAM/FeFET Block Latency ================" << endl;
+        			 // cout << "--- Read Path ---" << endl;
+        			 // if (wlDecoder.initialized) cout << "WL Decoder Read Latency:       " << wlDecoder.readLatency << " ns" << endl;
+        			 // if (wlNewDecoderDriver.initialized) cout << "WL New Decoder Driver Read Latency: " << wlNewDecoderDriver.readLatency << " ns" << endl;
+        			 // if (wlDecoderDriver.initialized) cout << "WL Decoder Driver Read Latency:" << wlDecoderDriver.readLatency << " ns" << endl;
+        			 // if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Read Latency: " << wlSwitchMatrix.readLatency << " ns" << endl;
+        			 // if (wlNewSwitchMatrix.initialized) cout << "WL New Switch Matrix Read Latency: " << wlNewSwitchMatrix.readLatency << " ns" << endl;
+        			 // if (slSwitchMatrix.initialized) cout << "SL Switch Matrix Read Latency: " << slSwitchMatrix.readLatency << " ns" << endl;
+
+        			 // if (numColMuxed > 1) {
+        			 //     if (muxDecoder.initialized) cout << "MUX Decoder Read Latency:      " << muxDecoder.readLatency << " ns" << endl;
+        			 //     if (mux.initialized) cout << "MUX Read Latency:              " << mux.readLatency << " ns" << endl;
+        			 // }
+        			 // if (param->SARADC) {
+        			 //     if (sarADC.initialized) cout << "SAR ADC Read Latency:          " << sarADC.readLatency << " ns" << endl;
+        			 // } else {
+        			 //     if (multilevelSenseAmp.initialized) cout << "Multilevel SA Read Latency:    " << multilevelSenseAmp.readLatency << " ns" << endl;
+        			 //     if (multilevelSAEncoder.initialized) cout << "Multilevel SA Encoder Latency: " << multilevelSAEncoder.readLatency << " ns" << endl;
+        			 // }
+        			 // if (numAdd > 1) {
+        			 //     if (adder.initialized) cout << "Adder Read Latency:            " << adder.readLatency << " ns" << endl;
+        			 //     if (dff.initialized) cout << "DFF Read Latency:              " << dff.readLatency << " ns" << endl;
+        			 // }
+        			 // if (numCellPerSynapse > 1) {
+        			 //     if (shiftAddWeight.initialized) cout << "ShiftAdd Weight Read Latency:  " << shiftAddWeight.readLatency << " ns" << endl;
+        			 // }
+        			 // if (numReadPulse > 1) {
+        			 //     if (shiftAddInput.initialized) cout << "ShiftAdd Input Read Latency:   " << shiftAddInput.readLatency << " ns" << endl;
+        			 // }
+
+        			 // cout << "--- Write Path ---" << endl;
+        			 // if (wlDecoder.initialized) cout << "WL Decoder Write Latency:      " << wlDecoder.writeLatency << " ns" << endl;
+        			 // if (wlNewDecoderDriver.initialized) cout << "WL New Decoder Driver Write Latency: " << wlNewDecoderDriver.writeLatency << " ns" << endl;
+        			 // if (wlDecoderDriver.initialized) cout << "WL Decoder Driver Write Latency:" << wlDecoderDriver.writeLatency << " ns" << endl;
+        			 // if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Write Latency:" << wlSwitchMatrix.writeLatency << " ns" << endl;
+        			 // if (wlNewSwitchMatrix.initialized) cout << "WL New Switch Matrix Write Latency:" << wlNewSwitchMatrix.writeLatency << " ns" << endl;
+        			 // if (slSwitchMatrix.initialized) cout << "SL Switch Matrix Write Latency:" << slSwitchMatrix.writeLatency << " ns" << endl;
+
+        			 // if (cell.writeVoltage > 1.5) {
+        			 //     if (wllevelshifter.initialized) cout << "WL Level Shifter Write Latency:" << wllevelshifter.writeLatency << " ns" << endl;
+        			 //     if (bllevelshifter.initialized) cout << "BL Level Shifter Write Latency:" << bllevelshifter.writeLatency << " ns" << endl;
+        			 //     if (sllevelshifter.initialized) cout << "SL Level Shifter Write Latency:" << sllevelshifter.writeLatency << " ns" << endl;
+        			 // }
+        			 // cout << "==========================================================" << endl;
 			} else if (BNNsequentialMode || XNORsequentialMode) {
 				double capBL = lengthCol * 0.2e-15/1e-6;
 				double colRamp = 0;
@@ -1575,7 +3715,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 						wlDecoderDriver.CalculateLatency(wlDecoder.rampOutput, capRow1, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);
 					}
 					if (numColMuxed > 1) {
-						mux.CalculateLatency(colRamp, 0, 1);
+						mux.CalculateLatency(1e20, 0, 1);
 						// 1.4 update
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
 					}
@@ -1624,11 +3764,11 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 						wlSwitchMatrix.CalculateLatency(1e20, capRow1, resRow, 1, 2*numWriteOperationPerRow*numRow*activityRowWrite);
 					}
 					if (numColMuxed > 1) {
-						mux.CalculateLatency(colRamp, 0, 1);
+						mux.CalculateLatency(1e20, 0, 1);
 						// 1.4 update 
 						muxDecoder.CalculateLatency(1e20, mux.capTgGateN*ceil(numCol/numColMuxed), mux.capTgGateP*ceil(numCol/numColMuxed), 0, 0, 1, 0);
 					}
-					if (SARADC) {
+					if (param->SARADC) {
 						sarADC.CalculateLatency(1);
 					} else {
 						multilevelSenseAmp.CalculateLatency(columnResistance, 1, 1);
@@ -1666,7 +3806,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 	}
 }
 
-void SubArray::CalculatePower(const vector<double> &columnResistance) {
+void SubArray::CalculatePower(const vector<double> &columnResistance, bool writeBack) {
 	if (!initialized) {
 		cout << "[Subarray] Error: Require initialization first!" << endl;
 	} else {
@@ -1764,7 +3904,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 					muxDecoder.CalculatePower(numColMuxed, 1);
 				}
 				// Anni update: numAdd
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculatePower(columnResistance, numAdd);
 				} else {
 					multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
@@ -1886,7 +4026,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 					mux.CalculatePower(numColMuxed);	// Mux still consumes energy during row-by-row read
 					muxDecoder.CalculatePower(numColMuxed, 1);
 				}
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculatePower(columnResistance, numAdd);
 				} else {
 					multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
@@ -1956,7 +4096,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 					muxDecoder.CalculatePower(numColMuxed, 1);
 				}
 				// Anni update: numAdd
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculatePower(columnResistance, numAdd);
 				} else {
 					// multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
@@ -2029,8 +4169,1347 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 				// cout<<"adder.leakage: "<<adder.leakage<<endl;
 				// cout<<"leakage: "<<leakage<<endl;
 			}
-		}
-		else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
+		
+
+	
+		 } else if (cell.memCellType == Type::_2TnC) {
+                	double bitsPerCell = param->bitsPerCell;
+			double numReadOperationPerRow = (numCol > numReadCellPerOperationNeuro) ? numCol / numReadCellPerOperationNeuro : 1;
+			double totalCellFlippingEnergy = 0;
+
+                	//Calculate Operation Counts
+                	//How many times it loops to process a single logical row
+                	double numReadCells = (int)ceil((double)numCol/numColMuxed);
+                	int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+
+                	//Calculate Driver Power (Switching Energy of wires)
+
+		
+			// allel write requires the peripheral drivers to fire exactly twice per cell write
+			//int writeCyclesPerCell = 2;
+			double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite;
+
+
+                	//RSL: Active during Read
+                	rslDecoder.CalculatePower(numRow*activityRowRead*numColMuxed, numRow*activityRowWrite);
+                	rslSwitchMatrix.CalculatePower(numColMuxed, 0, activityRowRead, activityColWrite);
+
+                	//WBL (Write Bitline - Row Plane): Active during Write
+                	//Drives 8 wires, but activity is based on logical row access
+			// wblDecoder.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite);
+                	// wblSwitchMatrix.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite, activityRowRead, activityColWrite);
+
+			// wblDecoder.CalculatePower(0, totalWriteActivations);
+                        // wblSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+			double wblReadActivations = numRow * activityRowRead * numColMuxed;
+
+			wblDecoder.CalculatePower(wblReadActivations, totalWriteActivations);
+			wblSwitchMatrix.CalculatePower(numColMuxed, totalWriteActivations, activityRowRead, activityColWrite);
+
+
+                	//SSL: Active during Write
+                	// sslDecoder.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite);
+                	// sslSwitchMatrix.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite, activityRowRead, activityColWrite);
+
+			sslDecoder.CalculatePower(0, totalWriteActivations);
+                        sslSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+
+                	//WWL: Active during Write
+                	// wwlDecoder.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite);
+                	// wwlSwitchMatrix.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite, activityRowRead, activityColWrite);
+
+			wwlDecoder.CalculatePower(0, totalWriteActivations);
+                        wwlSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+                	//WPL: Active during Write
+                	// wplDecoder.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite);
+                	// wplSwitchMatrix.CalculatePower(0, numWriteOperationPerRow*numRow*activityRowWrite, activityRowRead, activityColWrite);
+
+			wplDecoder.CalculatePower(0, totalWriteActivations);
+                        wplSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+                	//RBL: Via Mux
+                	rblDecoder.CalculatePower(numRow*activityRowRead*numColMuxed, 0);
+                	rblSwitchMatrix.CalculatePower(numColMuxed, 0, activityRowRead, activityColWrite);
+
+
+			// 	// 2-Cycle parallel write requires the peripheral drivers to fire exactly twice per cell write
+		// 	// int writeCyclesPerCell = 2;
+		// 	double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite;
+
+
+                // 	//RSL (Col): Active during Read
+		// 	rslDecoder.CalculatePower(numRow*activityRowRead*numColMuxed, 0);
+		// 	rslSwitchMatrix.CalculatePower(numRow*activityRowRead*numColMuxed, 0, activityRowRead, activityColWrite);
+
+                // 	//WBL (Write Bitline - Row Plane): Active during Write
+		// 	wblDecoder.CalculatePower(0, totalWriteActivations);
+		// 	wblSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+		// 	
+		// 	//SSL (Col): Active during Write
+		// 	sslDecoder.CalculatePower(0, totalWriteActivations);
+		// 	sslSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+                // 	//WWL (Row): Active during Write
+		// 	wwlDecoder.CalculatePower(0, totalWriteActivations);
+                //         wwlSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+                // 	//WPL (Row): Active during Write
+		// 	wplDecoder.CalculatePower(0, totalWriteActivations);
+                //         wplSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+                // 	// Calculate total number of rows being actively read
+		// 	double totalReadActivations = numRow * activityRowRead;
+		// 	
+		// 	//RBL (Row): Via Mux
+		// 	rblDecoder.CalculatePower(totalReadActivations * numColMuxed, 0);
+		// 	rblSwitchMatrix.CalculatePower(totalReadActivations * numColMuxed, 0, activityRowRead, activityColWrite);
+			
+			//PERIPHERALS (Mux, ADC, etc)
+			if (numColMuxed > 1) {
+				mux.CalculatePower(numColMuxed);
+				muxDecoder.CalculatePower(numColMuxed, 1);
+			}
+			
+			if (param->SARADC) {
+				sarADC.CalculatePower(columnResistance, 1);
+			} else {
+				multilevelSenseAmp.CalculatePower(columnResistance, 1);
+				multilevelSAEncoder.CalculatePower(numColMuxed);
+			}
+			
+			//Accumulation Logic
+			if (numCellPerSynapse > 1) {
+				shiftAddWeight.CalculatePower(numColMuxed);
+			}
+			if (numReadPulse > 1) {
+				shiftAddInput.CalculatePower(ceil(numColMuxed/numCellPerSynapse));
+			}
+			if (numAdd > 1) {
+				adder.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed));
+				dff.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed)*(log2(levelOutput) + ceil(log2(numAdd))/2), param->validated);
+			}
+			
+
+                	//Calculate Read Dynamic Energy (Array + Drivers)
+			
+
+			// Map 3D line parasitics to NeuroSim's calculated array parasitics
+			double resCellWBL = resRow;
+			
+			double resCellRBL = resRow;
+			
+			double resCellRSL = resCol;
+			
+			double resReadTransistor = cell.resMemCellOn; // Assuming worst-case ON resistance
+
+			double e_WBL_ON = 0;
+                        double e_WBL_OFF = 0;
+			double ReadEnergyArray = 0;
+			double dielectric = 0;
+			
+			double e_RBL_ON = 0;
+                        double e_RBL_OFF = 0;
+                        double eReadOn = 0;
+                        double eReadOff = 0;
+
+			double iFlip_ON_W = 20e-6;
+                        double tWrite = 10e-9;
+                        double CapFe = 0.5e-15;
+
+                        double eWritePerCell = 0;
+
+			
+			if (cell.mem_rdo == Type::ndro) {
+				
+				// 1. WBL Energy: Driven by the input drivers (DACs/PWM)
+        			// V_read is applied to the WBL of the target cells
+        			
+				double iFlip_ON = 2e-6; // 2 uA instantaneous switching current
+				double iFlip_OFF = 1.5e-6; 
+				double tFlip = 0.7e-9; 
+				
+				double V_RBL = 0.5; 
+				double iRBL_ON = 2e-6; 
+				double iRBL_OFF = 10e-9; 
+				double tREAD = 10e-9; 
+				
+				dielectric = 0.5 * CapFe * cell.readVoltage * cell.readVoltage;
+				
+				// 1. WBL:
+				e_WBL_ON = cell.readVoltage * iFlip_ON * tFlip;
+        			e_WBL_OFF = cell.readVoltage * iFlip_OFF * tFlip;
+
+        			// 2. RBL Energy: Driven by a small bias voltage during read
+				e_RBL_ON = V_RBL * iRBL_ON * tREAD;
+                        	e_RBL_OFF = V_RBL * iRBL_OFF * tREAD;
+
+				eReadOn = e_WBL_ON + e_RBL_ON + dielectric;
+				eReadOff = e_WBL_OFF + e_RBL_OFF + dielectric;
+
+				// ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow) + (0.5 * eReadOff * activityRowRead * numRow);
+
+				ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol) +
+                                                  (0.5 * eReadOff * activityRowRead * numRow * numCol);
+			
+			} else if (cell.mem_rdo == Type::qndro) {
+
+				// 1. WBL Energy: Driven by the input drivers (DACs/PWM)
+                                // V_read is applied to the WBL of the target cells
+
+				double iFlip_ON = 10e-6; // 20 uA instantaneous switching current
+                                double iFlip_OFF = 1.5e-6;
+                                double tFlip = 2e-9;
+
+                                double V_RBL = 0.5;
+                                double iRBL_ON = 2e-6; // NEED TO REDUCE
+                                double iRBL_OFF = 10e-9;
+                                double tREAD = 10e-9;
+
+                                dielectric = 0.5 * CapFe * cell.readVoltage * cell.readVoltage;
+				
+				// 1. WBL Energy:
+				e_WBL_ON = cell.readVoltage * iFlip_ON * tFlip;
+                                e_WBL_OFF = cell.readVoltage * iFlip_OFF * tFlip;
+
+                                // 2. RBL Energy: Driven by a small bias voltage during read
+                                e_RBL_ON = V_RBL * iRBL_ON * tREAD;
+                                e_RBL_OFF = V_RBL * iRBL_OFF * tREAD;
+
+                                eReadOn = e_WBL_ON + e_RBL_ON + dielectric;
+                                eReadOff = e_WBL_OFF + e_RBL_OFF + dielectric;
+
+                                //double ReadEnergyArray = (0.5 * eReadOn * numReadCellPerOperationNeuro) +
+                                //                         (0.5 * eReadOff * numReadCellPerOperationNeuro);
+
+				ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol) +
+                                                  (0.5 * eReadOff * activityRowRead * numRow * numCol);
+
+				if (writeBack) {
+                            		// Calculate Single-Row Read-Out Energy
+                            		// Parameters: (columnResistance, numColMuxed, numRead)
+                            		currentSenseAmp.CalculatePower(columnResistance, 1);
+
+                            		// Scale sensing energy for the entire subarray (row-by-row)
+                            		double senseEnergyTotal = currentSenseAmp.readDynamicEnergy * numRow * numCol * bitsPerCell;
+
+                            		// 1. Peripheral Energy to drive all lines
+                            		double peripheralWriteEnergy = wblDecoder.writeDynamicEnergy + wblSwitchMatrix.writeDynamicEnergy +
+                            		                               wwlDecoder.writeDynamicEnergy + wwlSwitchMatrix.writeDynamicEnergy +
+                            		                               wplDecoder.writeDynamicEnergy + wplSwitchMatrix.writeDynamicEnergy +
+                            		                               sslDecoder.writeDynamicEnergy + sslSwitchMatrix.writeDynamicEnergy;
+
+					// 2. FeCap Flipping Energy
+					eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
+
+                            		// We must rewrite the entire subarray to refresh the states
+                            		 // double totalCellFlippingEnergy = eWritePerCell * numCol * numRow * param->bitsPerCell;
+
+                            		// 3. Total Refresh Energy
+                            		// (Multiply peripheral energy by numRow because we write row-by-row)
+                            		// double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
+                            		double writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell) ;
+
+                            		readDynamicEnergyArray += writeBackEnergy;
+				}
+
+
+			} else if (cell.mem_rdo == Type::dro) {
+
+				// 1. WBL Energy: Driven by the input drivers (DACs/PWM)
+                                // V_read is applied to the WBL of the target cells
+
+                                double iFlip_ON = 20e-6; // 20 uA instantaneous switching current
+                                double iFlip_OFF = 1.5e-6;
+                                double tFlip = 2e-9;
+
+                                double V_RBL = 0.5;
+                                double iRBL_ON = 2e-6;
+                                double iRBL_OFF = 10e-9;
+                                double tREAD = 10e-9;
+
+				dielectric = 0.5 * CapFe * pow(cell.readVoltage,2);
+
+				e_WBL_ON = cell.readVoltage * iFlip_ON * tFlip;
+                                e_WBL_OFF = cell.readVoltage * iFlip_OFF * tFlip;
+
+                                // 2. RBL Energy: Driven by a small bias voltage during read
+                                // A small voltage is simultaneously applied to the RBL
+                                e_RBL_ON = V_RBL * iRBL_ON * tREAD;
+                                e_RBL_OFF = V_RBL * iRBL_OFF * tREAD;
+
+                                eReadOn = e_WBL_ON + e_RBL_ON + dielectric;
+                                eReadOff = e_WBL_OFF + e_RBL_OFF + dielectric;
+
+                                //double ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow) +
+                                //                         (0.5 * eReadOff * numReadCellPerOperationNeuro);
+
+				ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol) +
+                                                  (0.5 * eReadOff * activityRowRead * numRow * numCol);
+
+				// WriteBack
+				// Calculate Single-Row Read-Out Energy
+                                // Parameters: (columnResistance, numColMuxed, numRead)
+                                currentSenseAmp.CalculatePower(columnResistance, 1);
+
+                                // Scale sensing energy for the entire subarray (row-by-row)
+                                double senseEnergyTotal = currentSenseAmp.readDynamicEnergy * numRow * bitsPerCell;
+
+                                // 1. Peripheral Energy to drive all lines
+                                double voltageMultiplier = pow(cell.writeVoltage / cell.readVoltage, 2);
+
+				double peripheralWriteEnergy = (wblDecoder.writeDynamicEnergy + wblSwitchMatrix.readDynamicEnergy +
+                                                               wwlDecoder.writeDynamicEnergy + wwlSwitchMatrix.readDynamicEnergy +
+                                                               wplDecoder.writeDynamicEnergy + wplSwitchMatrix.readDynamicEnergy +
+                                                               sslDecoder.writeDynamicEnergy + sslSwitchMatrix.readDynamicEnergy) * voltageMultiplier;
+				
+				// double peripheralWriteEnergy = wblDecoder.writeDynamicEnergy + wblSwitchMatrix.writeDynamicEnergy +
+                                //                                wwlDecoder.writeDynamicEnergy + wwlSwitchMatrix.writeDynamicEnergy +
+                                //                                wplDecoder.writeDynamicEnergy + wplSwitchMatrix.writeDynamicEnergy +
+                                //                                sslDecoder.writeDynamicEnergy + sslSwitchMatrix.writeDynamicEnergy;
+
+				// 2. FeCap Flipping Energy
+                                eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
+
+                                // We must rewrite the entire subarray to refresh the states
+                                 // double totalCellFlippingEnergy = esWritePerCell * numCol * numRow * param->bitsPerCell;
+
+                                // 3. Total Refresh Energy
+                                // (Multiply peripheral energy by numRow because we write row-by-row)
+                                // double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
+                                double writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell);
+
+                                readDynamicEnergyArray += writeBackEnergy;
+
+
+			}
+
+
+                	readDynamicEnergyArray += ReadEnergyArray;
+
+                	//Total Read Energy
+                	readDynamicEnergy = 0;
+                	readDynamicEnergy += ((numAdd > 1) ? (adder.readDynamicEnergy + dff.readDynamicEnergy) : 0);
+                	readDynamicEnergy += rslDecoder.readDynamicEnergy + rslSwitchMatrix.readDynamicEnergy;
+                	//readDynamicEnergy += rblDecoder.readDynamicEnergy + rblSwitchMatrix.readDynamicEnergy; // Is Decoder Required here
+                	readDynamicEnergy += rblSwitchMatrix.readDynamicEnergy; 
+                	readDynamicEnergy += wblDecoder.readDynamicEnergy + wblSwitchMatrix.readDynamicEnergy;
+                	readDynamicEnergy += readDynamicEnergyArray;
+
+			
+			// if (cell.mem_rdo == Type::ndro) {
+			// 	
+			// 	// 1. Calculate DC Read Power for a single ON cell
+        		// 	// Power = V^2 / R
+        		// 	double pReadOn = (cell.readVoltage * cell.readVoltage) / cell.resMemCellOn;
+
+        		// 	// 2. Calculate DC Read Power for a single OFF cell (Leakage during read)
+        		// 	double pReadOff = (cell.readVoltage * cell.readVoltage) / cell.resMemCellOff;
+
+        		// 	// 3. Calculate Energy per cell for the duration of the read pulse
+        		// 	// Energy = Power * Time
+        		// 	double eReadOn = pReadOn * cell.readPulseWidth;
+        		// 	double eReadOff = pReadOff * cell.readPulseWidth;
+
+        		// 	// 4. Calculate total number of cells being actively read in this cycle
+        		// 	//double numActiveReadCells = numCol * activityColRead;
+        		// 	double numActiveReadCells = numReadCellPerOperationNeuro;
+
+        		// 	// 5. Total Array DC Read Energy
+        		// 	// Assuming a standard random data distribution (50% ON, 50% OFF)
+        		// 	double arrayDCReadEnergy = (0.5 * eReadOn * numActiveReadCells) +
+        		// 	                           (0.5 * eReadOff * numActiveReadCells);
+
+        		// 	// 6. Add the cell DC energy to the total array dynamic energy
+        		// 	readDynamicEnergyArray += arrayDCReadEnergy;
+
+			//  } else if (cell.mem_rdo == Type::qndro) {
+
+			//  	// 1. Normal DC Read Power
+			//  	double pReadOn = (cell.readVoltage * cell.readVoltage) / cell.resMemCellOn;
+			//  	double pReadOff = (cell.readVoltage * cell.readVoltage) / cell.resMemCellOff;
+			//  	
+			//  	double eReadOn = pReadOn * cell.readPulseWidth;
+			//  	double eReadOff = pReadOff * cell.readPulseWidth;
+			//  	
+			//  	// 2. QNDR Domain Flipping Energy
+			//  	// The FeCAP flips forward during the read pulse, and backward when WBL goes to 0V.
+			//  	double vRead_QNDR = cell.readVoltage;
+			//  	double iFlip = 20e-6; // 20 uA instantaneous switching current
+			//  	// double tFlip = 5e-9;  // 5ns switching time
+			//  	
+			//  	// Energy to flip twice (Forward + Reverse Self-Restore)
+			//  	double eFlipTwice = 2 * (vRead_QNDR * iFlip * cell.readPulseWidth);
+			//  	
+			//  	double numActiveReadCells = numReadCellPerOperationNeuro;
+
+			//  	double readDisturb = 10;
+
+			//  	double eWriteOne = (cell.writeVoltage / cell.resMemCellOn) * cell.writeVoltage * cell.writePulseWidth;
+
+			//  	double eRefresh = eWriteOne / readDisturb;
+			//  	
+			//  	// 3. Total Array Energy = DC Read Energy + Double Flipping Energy
+			//  	// Assuming 50% of cells are '0' and experience the QNDR flip
+			//  	double arrayDCReadEnergy = (0.5 * (eReadOn + eFlipTwice + eRefresh) * numActiveReadCells) +
+			//  	                           (0.5 * (eReadOff + eRefresh) * numActiveReadCells);
+			//  	
+			//  	readDynamicEnergyArray += arrayDCReadEnergy;
+
+			//  } else if (cell.mem_rdo == Type::dro) {
+    			//  	
+			// 	// Normal DC Read Power
+                        //         double pReadOn = (cell.readVoltage * cell.readVoltage) / cell.resMemCellOn;
+                        //         double pReadOff = (cell.readVoltage * cell.readVoltage) / cell.resMemCellOff;
+
+                        //         double eReadOn = pReadOn * cell.readPulseWidth;
+                        //         double eReadOff = pReadOff * cell.readPulseWidth;
+
+			// 	 
+			// 	 // 1. Full Destructive Read Flip Energy
+    			//  	double iFlipFull = 20e-6; // Full switching current
+    			//  	double tFlipFull = 10e-9; // Full switching time
+    			//  	double eFlipDestructive = cell.readVoltage * iFlipFull * tFlipFull;
+
+    			//  	// 2. Write-Back Peripheral Energy (WWL, WPL, WBL, SSL activated)
+    			//  	double writeBackPeripheralEnergy = wblDecoder.writeDynamicEnergy + wblSwitchMatrix.writeDynamicEnergy +
+    			//  	                                   wwlDecoder.writeDynamicEnergy + wwlSwitchMatrix.writeDynamicEnergy +
+    			//  	                                   wplDecoder.writeDynamicEnergy + wplSwitchMatrix.writeDynamicEnergy +
+    			//  	                                   sslDecoder.writeDynamicEnergy + sslSwitchMatrix.writeDynamicEnergy;
+
+    			//  	// 3. Write-Back Cell Flip Energy
+    			//  	double eFlipWriteBack = cell.writeVoltage * iFlipFull * tFlipFull;
+
+    			//  	// 4. Calculate Total Energy
+    			//  	double numActiveReadCells = numReadCellPerOperationNeuro;
+    			//  	
+    			//  	// Assume 50% of cells were '1' and got destroyed, requiring the full read-flip + write-back penalty
+    			//  	double arrayDROEnergy = 0.5 * (eReadOn + eFlipDestructive + writeBackPeripheralEnergy + eFlipWriteBack) * numActiveReadCells + 
+    			//  	                        0.5 * eReadOff * numActiveReadCells;
+    			//  	                        
+    			//  	readDynamicEnergyArray += arrayDROEnergy;
+
+			//  }
+
+
+                	//Peripheral Energy
+                	readDynamicEnergy += ((numColMuxed > 1) ? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy) : 0);
+                	readDynamicEnergy += (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy));
+                	readDynamicEnergy += ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0 )
+				+ ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0);
+
+
+                	//Calculate Write Dynamic Energy
+
+                	//Array Energy: Energy to charge the Internal Capacitors
+                	//Energy = 0.5 * C * V^2
+                	//From RRAM
+                	double totalCapPerCell = cell.numCapacitors * cell.capacitance;
+                	//writeDynamicEnergyArray = totalCapPerCell * cell.writeVoltage * cell.writeVoltage;
+
+                	//No. of cells being written
+                	//writeDynamicEnergyArray *= numWriteOperationPerRow * numRow * activityRowWrite;
+
+                	//Total Write Energy
+                	writeDynamicEnergy = 0;
+                	//DRiver Energy (4 Write Matrices)
+                	//writeDynamicEnergy += wblDecoder.writeDynamicEnergy + wblSwitchMatrix.writeDynamicEnergy;
+                	//writeDynamicEnergy += sslDecoder.writeDynamicEnergy + sslSwitchMatrix.writeDynamicEnergy;
+                	//writeDynamicEnergy += wwlDecoder.writeDynamicEnergy + wwlSwitchMatrix.writeDynamicEnergy;
+                	//writeDynamicEnergy += wplDecoder.writeDynamicEnergy + wplSwitchMatrix.writeDynamicEnergy;
+
+                	double writeErase = 0;
+			double alpha_Fe = 0.5;
+
+			double ArrayWriteEnergy = 0;
+
+			eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
+			//ArrayWriteEnergy = eWritePerCell * numWriteOperationPerRow * numRow * alpha_Fe;
+			ArrayWriteEnergy = eWritePerCell * numWriteCellPerOperationNeuro * numRow * activityRowWrite * alpha_Fe;
+
+                	 //writeErase = 0.5 * numRow * numCol * 8 * (cell.writeVoltage * iFlip_ON * tWrite);
+			
+			
+			double peripheralWriteEnergy = wblDecoder.writeDynamicEnergy + wblSwitchMatrix.writeDynamicEnergy +
+                                       wwlDecoder.writeDynamicEnergy + wwlSwitchMatrix.writeDynamicEnergy +
+                                       wplDecoder.writeDynamicEnergy + wplSwitchMatrix.writeDynamicEnergy +
+				       sslDecoder.writeDynamicEnergy + sslSwitchMatrix.writeDynamicEnergy;
+
+        		// // 2. Inputs for FeCap Flipping
+        		// double vWrite = cell.writeVoltage;
+        		// double tWritePulse = cell.writePulseWidth;
+        		// 
+        		// // 3. Instantaneous Flipping Current
+        		// // 20 microamps per cell during the flip
+        		// double iFlip = 20e-6; 
+
+        		// // 4. Manual Energy Calculation for a Single FeCap Flip
+        		// // E = V * I * t
+        		// double eFlipPerCell = vWrite * iFlip * tWritePulse;
+
+        		// // 5. Total Array Cell Flipping Energy
+        		// // Multiply by the number of bits actually flipping in this operation
+        		// double totalCellFlippingEnergy = eFlipPerCell * numWriteCellPerOperationNeuro;
+
+			
+			// Inhibition scheme (V/3 scheme is typical for cross-point-like sharing)
+			double vInhibit = cell.writeVoltage / 3.0; 
+			
+			// Calculate the number of unselected capacitors sharing the active lines
+			// If we activate 1 row of WPLs and write to specific columns:
+			int numTotalCapacitors = param->numRowSubArrayPhysical * param->numColSubArray * 8;
+			int numUnselectedCells = numTotalCapacitors - numWriteCellPerOperationNeuro;
+			
+			// Calculate the parasitic energy of charging all unselected FeCAPs to V/3
+			// Energy = 0.5 * C_unselected * V_inhibit^2 
+			// We use the linear dielectric capacitance (capFeOff) since domains don't fully flip
+			double capFeH = 0.5e-15; 
+			double inhibitionEnergy = 0.5 * capFeH * (vInhibit * vInhibit) * numUnselectedCells;
+			inhibitionEnergy *= (numWriteOperationPerRow * numRow * activityRowWrite);
+
+			// Multiply by the number of write cycles (2 cycles for a parallel write scheme)
+			// writeCyclesPerCell = 2;
+			// inhibitionEnergy *= writeCyclesPerCell;
+			
+			// 6. Aggregate Total Write Energy (Adding inhibition penalty)
+			writeDynamicEnergyArray = peripheralWriteEnergy + ArrayWriteEnergy + inhibitionEnergy;
+			
+			
+			//Array Energy
+                	writeDynamicEnergy += writeDynamicEnergyArray;
+
+
+                	//Calculate Leakage Power
+                	leakage = 0;
+                	//Leakage from 6 matrices
+                	leakage += wblDecoder.leakage + wblSwitchMatrix.leakage;
+                	leakage += sslDecoder.leakage + sslSwitchMatrix.leakage;
+                	leakage += rslDecoder.leakage + rslSwitchMatrix.leakage;
+                	leakage += wwlDecoder.leakage + wwlSwitchMatrix.leakage;
+                	leakage += wplDecoder.leakage + wplSwitchMatrix.leakage;
+                	leakage += rblDecoder.leakage + rblSwitchMatrix.leakage;
+
+                	//Peripheral Leakage
+                	leakage += ((numColMuxed > 1) ? (mux.leakage + muxDecoder.leakage) : 0);
+                	leakage += (param->SARADC ? sarADC.leakage : (multilevelSenseAmp.leakage + multilevelSAEncoder.leakage));
+                	leakage += ((numCellPerSynapse > 1) ? shiftAddWeight.leakage : 0 )
+                                 + ((numReadPulse > 1) ? shiftAddInput.leakage : 0);
+                	leakage += ((numAdd > 1) ? (adder.leakage  + dff.leakage) : 0);  
+
+                	//Final Calculations
+                	readDynamicEnergyADC = readDynamicEnergyArray
+                	                                           + (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy));
+
+                	readDynamicEnergyAccum = ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0 )
+                                           + ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0);
+
+                	readDynamicEnergyOther = readDynamicEnergy - readDynamicEnergyADC - readDynamicEnergyAccum;
+
+			// cout << "\n================ 2TnC Block Energy & Power ================" << endl;
+        		// cout << "--- Read Dynamic Energy (J) ---" << endl;
+        		// if (rslDecoder.initialized) cout << "RSL Decoder Read Energy:      " << rslDecoder.readDynamicEnergy << " J" << endl;
+        		// if (rslSwitchMatrix.initialized) cout << "RSL Switch Matrix Read Energy:" << rslSwitchMatrix.readDynamicEnergy << " J" << endl;
+        		// if (rblDecoder.initialized) cout << "RBL Decoder Read Energy:      " << rblDecoder.readDynamicEnergy << " J" << endl;
+        		// if (rblSwitchMatrix.initialized) cout << "RBL Switch Matrix Read Energy:" << rblSwitchMatrix.readDynamicEnergy << " J" << endl;
+
+        		// if (numColMuxed > 1) {
+        		//     if (muxDecoder.initialized) cout << "MUX Decoder Read Energy:      " << muxDecoder.readDynamicEnergy << " J" << endl;
+        		//     if (mux.initialized) cout << "MUX Read Energy:              " << mux.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (currentSenseAmp.initialized) {
+        		//     cout << "Current Sense Amp Read Energy:" << currentSenseAmp.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (param->SARADC) {
+        		//     if (sarADC.initialized) cout << "SAR ADC Read Energy:          " << sarADC.readDynamicEnergy << " J" << endl;
+        		// } else {
+        		//     if (multilevelSenseAmp.initialized) cout << "Multilevel SA Read Energy:    " << multilevelSenseAmp.readDynamicEnergy << " J" << endl;
+        		//     if (multilevelSAEncoder.initialized) cout << "Multilevel SA Enc Read Energy:" << multilevelSAEncoder.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (numAdd > 1) {
+        		//     if (adder.initialized) cout << "Adder Read Energy:            " << adder.readDynamicEnergy << " J" << endl;
+        		//     if (dff.initialized) cout << "DFF Read Energy:              " << dff.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (numCellPerSynapse > 1) {
+        		//     if (shiftAddWeight.initialized) cout << "ShiftAdd Weight Read Energy:  " << shiftAddWeight.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (numReadPulse > 1) {
+        		//     if (shiftAddInput.initialized) cout << "ShiftAdd Input Read Energy:   " << shiftAddInput.readDynamicEnergy << " J" << endl;
+        		// }
+
+        		// cout << "--- Write Dynamic Energy (J) ---" << endl;
+        		// if (wwlDecoder.initialized) cout << "WWL Decoder Write Energy:     " << wwlDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (wwlSwitchMatrix.initialized) cout << "WWL Switch Matrix Write E:    " << wwlSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		// if (wblDecoder.initialized) cout << "WBL Decoder Write Energy:     " << wblDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (wblSwitchMatrix.initialized) cout << "WBL Switch Matrix Write E:    " << wblSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		// if (wplDecoder.initialized) cout << "WPL Decoder Write Energy:     " << wplDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (wplSwitchMatrix.initialized) cout << "WPL Switch Matrix Write E:    " << wplSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		// if (sslDecoder.initialized) cout << "SSL Decoder Write Energy:     " << sslDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (sslSwitchMatrix.initialized) cout << "SSL Switch Matrix Write E:    " << sslSwitchMatrix.writeDynamicEnergy << " J" << endl;
+
+        		// if (cell.writeVoltage > 1.5) {
+        		//     if (wwlLevelShifter.initialized) cout << "WWL Level Shifter Write E:    " << wwlLevelShifter.writeDynamicEnergy << " J" << endl;
+        		//     if (wblLevelShifter.initialized) cout << "WBL Level Shifter Write E:    " << wblLevelShifter.writeDynamicEnergy << " J" << endl;
+        		//     if (wplLevelShifter.initialized) cout << "WPL Level Shifter Write E:    " << wplLevelShifter.writeDynamicEnergy << " J" << endl;
+        		//     if (sslLevelShifter.initialized) cout << "SSL Level Shifter Write E:    " << sslLevelShifter.writeDynamicEnergy << " J" << endl;
+        		// }
+
+        		// cout << "--- Leakage Power (W) ---" << endl;
+        		// if (rslDecoder.initialized) cout << "RSL Decoder Leakage:          " << rslDecoder.leakage << " W" << endl;
+        		// if (rslSwitchMatrix.initialized) cout << "RSL Switch Matrix Leakage:    " << rslSwitchMatrix.leakage << " W" << endl;
+        		// if (rblDecoder.initialized) cout << "RBL Decoder Leakage:          " << rblDecoder.leakage << " W" << endl;
+        		// if (rblSwitchMatrix.initialized) cout << "RBL Switch Matrix Leakage:    " << rblSwitchMatrix.leakage << " W" << endl;
+        		// if (wwlDecoder.initialized) cout << "WWL Decoder Leakage:          " << wwlDecoder.leakage << " W" << endl;
+        		// if (wblDecoder.initialized) cout << "WBL Decoder Leakage:          " << wblDecoder.leakage << " W" << endl;
+        		// if (param->SARADC && sarADC.initialized) cout << "SAR ADC Leakage:              " << sarADC.leakage << " W" << endl;
+
+        		// // --- Destructive Read-Out Write-Back Check ---
+        		// if (cell.mem_rdo == Type::dro) {
+        		//     cout << "---------------- DRO Penalty (Write-Back Energy) ----------------" << endl;
+        		//     if (wwlDecoder.initialized) cout << "[Write-Back] WWL Decoder:     " << wwlDecoder.writeDynamicEnergy << " J" << endl;
+        		//     if (wwlSwitchMatrix.initialized) cout << "[Write-Back] WWL SwitchMatrix:" << wwlSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		//     if (wblDecoder.initialized) cout << "[Write-Back] WBL Decoder:     " << wblDecoder.writeDynamicEnergy << " J" << endl;
+        		//     if (wblSwitchMatrix.initialized) cout << "[Write-Back] WBL SwitchMatrix:" << wblSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		//     if (wplDecoder.initialized) cout << "[Write-Back] WPL Decoder:     " << wplDecoder.writeDynamicEnergy << " J" << endl;
+        		//     if (wplSwitchMatrix.initialized) cout << "[Write-Back] WPL SwitchMatrix:" << wplSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		//     cout << "-----------------------------------------------------------------" << endl;
+        		// }
+        		// cout << "===========================================================" << endl;
+
+		
+		} else if (cell.memCellType == Type::_1TnC) {
+
+			double bitsPerCell = param->bitsPerCell;
+                        double numReadOperationPerRow = (numCol > numReadCellPerOperationNeuro) ? numCol / numReadCellPerOperationNeuro : 1;
+                        double totalCellFlippingEnergy = 0;
+
+                        //Calculate Operation Counts
+                        //How many times it loops to process a single logical row
+                        double numReadCells = (int)ceil((double)numCol/numColMuxed);
+                        int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+
+			 double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite;
+
+
+                        //Calculate Driver Power (Switching Energy of wires)
+			//
+			// 1. Calculate how many times the rows fire during a read
+			double totalReadActivations = numRow * activityRowRead;
+			double decoderReadActivations = numRow * activityRowRead * numColMuxed;
+			double switchMatrixReadActivations = numColMuxed;
+			
+			// 2. BL (Bitline) - Driven during Read and Write
+			// blDecoder.CalculatePower(totalReadActivations, totalWriteActivations);
+			// blSwitchMatrix.CalculatePower(totalReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
+
+			double blReadActivations = decoderReadActivations * bitsPerCell;
+        		double blSwitchMatrixActivations = numColMuxed * bitsPerCell;
+			blDecoder.CalculatePower(blReadActivations, totalWriteActivations);
+        		blSwitchMatrix.CalculatePower(blSwitchMatrixActivations, totalWriteActivations, activityRowRead, activityColWrite);
+
+			// blDecoder.CalculatePower(decoderReadActivations, totalWriteActivations);
+                        // blSwitchMatrix.CalculatePower(switchMatrixReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
+			
+			// 3. WL (Wordline) - Driven during Read and Write
+			// wlDecoder.CalculatePower(totalReadActivations, totalWriteActivations);
+			// wlSwitchMatrix.CalculatePower(totalReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
+
+			wlDecoder.CalculatePower(decoderReadActivations, totalWriteActivations);
+        		wlSwitchMatrix.CalculatePower(numColMuxed, totalWriteActivations, activityRowRead, activityColWrite);
+
+			// wlDecoder.CalculatePower(decoderReadActivations, totalWriteActivations);
+                        // wlSwitchMatrix.CalculatePower(switchMatrixReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
+
+			
+			// 4. PL (Plateline) - Passing 1 ensures Leakage is calculated even if it doesn't toggle dynamically during a read
+			plDecoder.CalculatePower(1, totalWriteActivations);
+			plSwitchMatrix.CalculatePower(1, totalWriteActivations, activityRowRead, activityColWrite);
+
+
+			
+			// double bitsPerCell = param->bitsPerCell;
+			// double numReadOperationPerRow = (numCol > numReadCellPerOperationNeuro) ? numCol / numReadCellPerOperationNeuro : 1;
+                        // double totalCellFlippingEnergy = 0;
+
+                        // //Calculate Operation Counts
+                        // //How many times it loops to process a single logical row
+                        // double numReadCells = (int)ceil((double)numCol/numColMuxed);
+                        // int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+
+			// //Calculate Driver Power (Switching Energy of wires)
+
+                        // // 2-Cycle parallel write requires the peripheral drivers to fire exactly twice per cell write
+                        // //int writeCyclesPerCell = 2;
+                        // // 1. Calculate Global Operation Counts
+			// double totalReadActivations = numRow * activityRowRead;
+
+
+			// // double numReadCells = (int)ceil((double)numCol/numColMuxed);
+                        // // int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+
+                        // //Calculate Driver Power (Switching Energy of wires)
+
+
+                        // // allel write requires the peripheral drivers to fire exactly twice per cell write
+                        // //int writeCyclesPerCell = 2;
+                        // //    double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite;
+
+
+                        // //    // PL
+                        // //    plDecoder.CalculatePower(numRow*activityRowRead*numColMuxed, numRow*activityRowWrite);
+                        // //    plSwitchMatrix.CalculatePower(numColMuxed, 0, activityRowRead, activityColWrite);
+
+                        // //    // BL (Bitline - Row Plane)
+                        // //    blDecoder.CalculatePower(0, totalWriteActivations);
+                        // //    blSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+			// //    // WL
+                        // //    wlDecoder.CalculatePower(0, totalWriteActivations);
+                        // //    wlSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+			// // // int writeCyclesPerCell = 2; 
+			// double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite; // * writeCyclesPerCell;
+
+			// // ==========================================
+			// // DRIVER POWER
+			// // ==========================================
+			// 
+                        //  // plDecoder.CalculatePower(numRow*activityRowRead*numColMuxed, numRow*activityRowWrite);
+                        //  // plSwitchMatrix.CalculatePower(numColMuxed, 0, activityRowRead, activityColWrite);
+
+                        //  // blDecoder.CalculatePower(0, totalWriteActivations);
+                        //  // blSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+                        //  // wlDecoder.CalculatePower(0, totalWriteActivations);
+                        //  // wlSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+
+			//   // BL (Plane - Row): Precharged during read, driven during write
+			//   blDecoder.CalculatePower(0, totalWriteActivations);
+			//   blSwitchMatrix.CalculatePower(0, totalWriteActivations, activityRowRead, activityColWrite);
+			//   
+			//   // WL (Row): Transistor Gate - Active during BOTH Read and Write
+			//   wlDecoder.CalculatePower(totalReadActivations, totalWriteActivations);
+			//   wlSwitchMatrix.CalculatePower(totalReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
+			//   
+			//   // PL (Column): Write Plate Line - Active during Write
+			//   plDecoder.CalculatePower(totalReadActivations, totalWriteActivations);
+			//   plSwitchMatrix.CalculatePower(totalReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
+			
+			
+			// ==========================================
+			// PERIPHERALS (Mux, ADC, etc)
+			// ==========================================
+			if (numColMuxed > 1) {
+				mux.CalculatePower(numColMuxed);
+				muxDecoder.CalculatePower(numColMuxed, 1);
+			}
+			
+			if (param->SARADC) {
+				sarADC.CalculatePower(columnResistance, numAdd);
+			} else {
+				multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
+				multilevelSAEncoder.CalculatePower(numColMuxed * numAdd);
+			}
+			
+			
+			// ==========================================
+			// ACCUMULATION LOGIC
+			// ==========================================
+			if (numCellPerSynapse > 1) {
+				shiftAddWeight.CalculatePower(numColMuxed);
+			}
+			if (numReadPulse > 1) {
+				shiftAddInput.CalculatePower(ceil(numColMuxed/numCellPerSynapse));
+			}
+			if (numAdd > 1) {
+				adder.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed));
+				dff.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed)*(log2(levelOutput) + ceil(log2(numAdd))/2), param->validated);
+			}
+			
+                        // Map 3D line parasitics to NeuroSim's calculated array parasitics
+                        double resCellWL = resRow;
+
+                        double resCellBL = resRow;
+
+                        double resCellPL = resCol;
+
+                        double resReadTransistor = cell.resMemCellOn; // Assuming worst-case ON resistance
+
+                        double e_WL_ON = 0;
+                        double e_WL_OFF = 0;
+                        double ReadEnergyArray = 0;
+                        double dielectric = 0;
+
+                        double e_BL_ON = 0;
+                        double e_BL_OFF = 0;
+                        double eReadOn = 0;
+                        double eReadOff = 0;
+
+                        double iFlip_ON_W = 20e-6;
+                        double tWrite = 10e-9;
+                        double CapFe = 0.5e-15;
+
+                        double eWritePerCell = 0;
+			double writeBackEnergy = 0;
+			double senseEnergyTotal = 0;
+                        double peripheralWriteEnergy = 0;
+
+
+                        if (cell.mem_rdo == Type::ndro) {
+
+                                // 1. WBL Energy: Driven by the input drivers (DACs/PWM)
+                                // V_read is applied to the WBL of the target cells
+
+                                double iFlip_ON = 2e-6; // 2 uA instantaneous switching current
+                                double iFlip_OFF = 1.5e-6;
+                                double tFlip = 0.7e-9;
+
+                                dielectric = 0.5 * CapFe * cell.readVoltage * cell.readVoltage;
+
+                                // 1. BL:
+                                e_BL_ON = cell.readVoltage * iFlip_ON * tFlip;
+                                e_BL_OFF = cell.readVoltage * iFlip_OFF * tFlip;
+
+                                eReadOn = e_BL_ON + dielectric;
+                                eReadOff = e_BL_OFF + dielectric;
+
+				//ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow) + (0.5 * eReadOff * activityRowRead * numRow);
+				 ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol) +
+                                                  (0.5 * eReadOff * activityRowRead * numRow * numCol);
+
+
+                        } else if (cell.mem_rdo == Type::qndro) {
+
+                                // 1. BL Energy: Driven by the input drivers (DACs/PWM)
+                                // V_read is applied to the WBL of the target cells
+
+                                double iFlip_ON = 10e-6; // 20 uA instantaneous switching current
+                                double iFlip_OFF = 1.5e-6;
+                                double tFlip = 2e-9;
+
+                                dielectric = 0.5 * CapFe * cell.readVoltage * cell.readVoltage;
+
+                                // 1. BL Energy:
+                                e_BL_ON = cell.readVoltage * iFlip_ON * tFlip;
+                                e_BL_OFF = cell.readVoltage * iFlip_OFF * tFlip;
+
+                                eReadOn = e_BL_ON + dielectric;
+                                eReadOff = e_BL_OFF + dielectric;
+
+                                // ReadEnergyArray = (0.5 * eReadOn * numReadCellPerOperationNeuro) +
+                                //                          (0.5 * eReadOff * numReadCellPerOperationNeuro);
+
+				 ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol) +
+                                                  (0.5 * eReadOff * activityRowRead * numRow * numCol);
+
+                                if (writeBack) {
+                                        // Calculate Single-Row Read-Out Energy
+                                        // Parameters: (columnResistance, numColMuxed, numRead)
+                                        currentSenseAmp.CalculatePower(columnResistance, 1);
+
+                                        // Scale sensing energy for the entire subarray (row-by-row)
+                                        senseEnergyTotal = currentSenseAmp.readDynamicEnergy * numRow * numCol * bitsPerCell;
+
+                                        // 1. Peripheral Energy to drive all lines
+                                        peripheralWriteEnergy = blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy +
+                                                                       wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy +
+                                                                       plDecoder.writeDynamicEnergy + plSwitchMatrix.writeDynamicEnergy;
+
+                                        // 2. FeCap Flipping Energy
+                                        eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
+
+                                        // We must rewrite the entire subarray to refresh the states
+                                         // double totalCellFlippingEnergy = eWritePerCell * numCol * numRow * param->bitsPerCell;
+
+                                        // 3. Total Refresh Energy
+                                        // (Multiply peripheral energy by numRow because we write row-by-row)
+                                        // double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
+                                        writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell) ;
+
+                                        readDynamicEnergyArray += writeBackEnergy;
+                                }
+
+
+                        } else if (cell.mem_rdo == Type::dro) {
+
+                                // 1. WBL Energy: Driven by the input drivers (DACs/PWM)
+                                // V_read is applied to the WBL of the target cells
+
+                                double iFlip_ON = 20e-6; // 20 uA instantaneous switching current
+                                double iFlip_OFF = 1.5e-6;
+                                double tFlip = 2e-9;
+
+                                dielectric = 0.5 * CapFe * pow(cell.readVoltage,2);
+
+                                e_BL_ON = cell.readVoltage * iFlip_ON * tFlip;
+                                e_BL_OFF = cell.readVoltage * iFlip_OFF * tFlip;
+
+				eReadOn = e_BL_ON + dielectric;
+                                eReadOff = e_BL_OFF + dielectric;
+
+                                ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol * bitsPerCell) +
+                                                  (0.5 * eReadOff * activityRowRead * numRow * numCol * bitsPerCell);
+
+                                if (activityRowRead > 0) {
+				// WriteBack
+        			// 1. Sense Energy: currentSenseAmp was initialized for numCol, so 1 activation senses the whole row.
+        			// currentSenseAmp.CalculatePower(columnResistance, 1);
+
+        			// In standard DRO memory (DRAM/NVDRAM), the entire row is sensed into a row buffer,
+        			// and written back ALL AT ONCE when the row is closed.
+        			double totalWriteBackOps = numRow * activityRowRead;
+
+        			// double senseEnergyTotal = currentSenseAmp.readDynamicEnergy * totalWriteBackOps;
+
+        			// 2. Peripheral Energy: Extract the energy of a SINGLE activation, then scale it.
+        			double totalReadOps = numRow * activityRowRead * numColMuxed; 
+
+        			double E_decoder_per_op = (blDecoder.readDynamicEnergy + wlDecoder.readDynamicEnergy) / totalReadOps;
+        			double E_pl_decoder_per_op = plDecoder.readDynamicEnergy / 1.0; 
+
+        			// Switch matrices were activated numColMuxed times in the base read pass
+        			double E_sw_per_op = (blSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy) / numColMuxed;
+        			double E_pl_sw_per_op = plSwitchMatrix.readDynamicEnergy / 1.0;
+
+        			double singleReadPeripheralEnergy = E_decoder_per_op + E_pl_decoder_per_op + E_sw_per_op + E_pl_sw_per_op;
+
+        			// Scale read peripheral energy to write voltage (E = 0.5 * C * V^2)
+        			double voltageMultiplier = pow(cell.writeVoltage / cell.readVoltage, 2);
+        			double singleWritePeripheralEnergy = singleReadPeripheralEnergy * voltageMultiplier;
+
+        			peripheralWriteEnergy = singleWritePeripheralEnergy * totalWriteBackOps;
+
+        			// 3. FeCap Flipping Energy
+        			eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage, 2));
+        			
+        			// Total cells written back = total active rows * total columns. Assume 50% need to be flipped back to '1'.
+        			double totalCellFlippingEnergy = eWritePerCell * (numRow * activityRowRead * numCol) * 0.5;
+
+        			// 4. Aggregate Write-Back Energy
+        			// double writeBackEnergy = peripheralWriteEnergy + senseEnergyTotal + totalCellFlippingEnergy;
+        			double writeBackEnergy = peripheralWriteEnergy + totalCellFlippingEnergy;
+				}
+
+        			readDynamicEnergyArray += writeBackEnergy;
+				
+				// // WriteBack
+                                // // Calculate Single-Row Read-Out Energy
+                                // // Parameters: (columnResistance, numColMuxed, numRead)
+                                // currentSenseAmp.CalculatePower(columnResistance, 1);
+
+                                // // Scale sensing energy for the entire subarray (row-by-row)
+                                // // senseEnergyTotal = currentSenseAmp.readDynamicEnergy * numRow * bitsPerCell;
+                                // senseEnergyTotal = currentSenseAmp.readDynamicEnergy * totalWriteBackOps;
+
+                                // // 1. Peripheral Energy to drive all lines
+                                // // double peripheralWriteEnergy = blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy +
+                                // //                                wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy +
+                                // //                                plDecoder.writeDy:se nu
+				// //                                namicEnergy + plSwitchMatrix.writeDynamicEnergy;
+
+                                // double singleReadPeripheralEnergy = (blDecoder.readDynamicEnergy + blSwitchMatrix.readDynamicEnergy +
+        			//                                      wlDecoder.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy) / totalReadOps;
+        			// singleReadPeripheralEnergy += (plDecoder.readDynamicEnergy + plSwitchMatrix.readDynamicEnergy) / 1.0; 
+
+        			// double voltageMultiplier = pow(cell.writeVoltage / cell.readVoltage, 2);
+        			// peripheralWriteEnergy = singleReadPeripheralEnergy * voltageMultiplier * totalWriteBackOps;
+
+				// // peripheralWriteEnergy = (blDecoder.readDynamicEnergy + blSwitchMatrix.readDynamicEnergy +
+				// //                          wlDecoder.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy +
+				// //                          plDecoder.readDynamicEnergy + plSwitchMatrix.readDynamicEnergy) * voltageMultiplier;
+
+				// // 2. FeCap Flipping Energy
+                                // eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
+
+				// double totalCellFlippingEnergy = eWritePerCell * totalWriteBackOps * (numCol / numColMuxed) * 0.5;
+
+				// double writeBackEnergy = peripheralWriteEnergy + senseEnergyTotal + totalCellFlippingEnergy;
+
+                                // // We must rewrite the entire subarray to refresh the states
+                                //  // double totalCellFlippingEnergy = esWritePerCell * numCol * numRow * param->bitsPerCell;
+
+                                // // 3. Total Refresh Energy
+                                // // (Multiply peripheral energy by numRow because we write row-by-row)
+                                // // double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
+                                // // writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell) + senseEnergyTotal + (eWritePerCell * numRow * bitsPerCell);
+
+                                // readDynamicEnergyArray += writeBackEnergy;
+
+
+                        }
+
+
+                        readDynamicEnergyArray += ReadEnergyArray;
+
+                        //Total Read Energy
+                        readDynamicEnergy = 0;
+                        readDynamicEnergy += ((numAdd > 1) ? (adder.readDynamicEnergy + dff.readDynamicEnergy) : 0);
+                        readDynamicEnergy += wlDecoder.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy;
+                        readDynamicEnergy += blDecoder.readDynamicEnergy + blSwitchMatrix.readDynamicEnergy;
+                        readDynamicEnergy += readDynamicEnergyArray;
+
+
+                        //Peripheral Energy
+                        readDynamicEnergy += ((numColMuxed > 1) ? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy) : 0);
+                        readDynamicEnergy += (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy));
+                        readDynamicEnergy += ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0 )
+                                + ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0);
+
+
+                        //Calculate Write Dynamic Energy
+
+                        //Array Energy: Energy to charge the Internal Capacitors
+                        //Energy = 0.5 * C * V^2
+                        //From RRAM
+                        double totalCapPerCell = cell.numCapacitors * cell.capacitance;
+                        //writeDynamicEnergyArray = totalCapPerCell * cell.writeVoltage * cell.writeVoltage;
+
+                        //No. of cells being written
+                        //writeDynamicEnergyArray *= numWriteOperationPerRow * numRow * activityRowWrite;
+
+                        //Total Write Energy
+                        writeDynamicEnergy = 0;
+
+                        double writeErase = 0;
+                        double alpha_Fe = 0.5;
+
+                        double ArrayWriteEnergy = 0;
+
+                        eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
+                        //ArrayWriteEnergy = eWritePerCell * numWriteOperationPerRow * numRow * alpha_Fe;
+
+                        ArrayWriteEnergy = eWritePerCell * numWriteCellPerOperationNeuro * numRow * activityRowWrite * alpha_Fe;
+
+
+			//writeErase = 0.5 * numRow * numCol * 8 * (cell.writeVoltage * iFlip_ON * tWrite);
+
+
+                        peripheralWriteEnergy = blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy +
+                                       wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy +
+                                       plDecoder.writeDynamicEnergy + plSwitchMatrix.writeDynamicEnergy;
+
+                        // // 2. Inputs for FeCap Flipping
+                        // double vWrite = cell.writeVoltage;
+                        // double tWritePulse = cell.writePulseWidth;
+                        //
+                        // // 3. Instantaneous Flipping Current
+                        // // 20 microamps per cell during the flip
+                        // double iFlip = 20e-6;
+
+                        // // 4. Manual Energy Calculation for a Single FeCap Flip
+                        // // E = V * I * t
+                        // double eFlipPerCell = vWrite * iFlip * tWritePulse;
+
+                        // // 5. Total Array Cell Flipping Energy
+                        // // Multiply by the number of bits actually flipping in this operation
+                        // double totalCellFlippingEnergy = eFlipPerCell * numWriteCellPerOperationNeuro;
+
+
+                        // Inhibition scheme (V/3 scheme is typical for cross-point-like sharing)
+                        double vInhibit = cell.writeVoltage / 3.0;
+
+                        // Calculate the number of unselected capacitors sharing the active lines
+                        // If we activate 1 row of WPLs and write to specific columns:
+                        int numTotalCapacitors = param->numRowSubArrayPhysical * param->numColSubArray * 8;
+                        int numUnselectedCells = numTotalCapacitors - numWriteCellPerOperationNeuro;
+
+                        // Calculate the parasitic energy of charging all unselected FeCAPs to V/3
+                        // Energy = 0.5 * C_unselected * V_inhibit^2
+                        // We use the linear dielectric capacitance (capFeOff) since domains don't fully flip
+                        double capFeH = 0.5e-15;
+                        double inhibitionEnergy = 0.5 * capFeH * (vInhibit * vInhibit) * numUnselectedCells;
+			inhibitionEnergy *= (numWriteOperationPerRow * numRow * activityRowWrite);
+
+                        // Multiply by the number of write cycles (2 cycles for a parallel write scheme)
+                        // writeCyclesPerCell = 2;
+                        // inhibitionEnergy *= writeCyclesPerCell;
+
+                        // 6. Aggregate Total Write Energy (Adding inhibition penalty)
+                        writeDynamicEnergyArray = peripheralWriteEnergy + ArrayWriteEnergy + inhibitionEnergy;
+
+
+                        //Array Energy
+                        writeDynamicEnergy += writeDynamicEnergyArray;
+
+
+                        //Calculate Leakage Power
+                        leakage = 0;
+                        //Leakage from 3 matrices
+                        leakage += blDecoder.leakage + blSwitchMatrix.leakage;
+                        leakage += wlDecoder.leakage + wlSwitchMatrix.leakage;
+                        leakage += plDecoder.leakage + plSwitchMatrix.leakage;
+
+                        //Peripheral Leakage
+                        leakage += ((numColMuxed > 1) ? (mux.leakage + muxDecoder.leakage) : 0);
+                        leakage += (param->SARADC ? sarADC.leakage : (multilevelSenseAmp.leakage + multilevelSAEncoder.leakage));
+                        leakage += ((numCellPerSynapse > 1) ? shiftAddWeight.leakage : 0 )
+                                 + ((numReadPulse > 1) ? shiftAddInput.leakage : 0);
+                        leakage += ((numAdd > 1) ? (adder.leakage  + dff.leakage) : 0);
+
+                        //Final Calculations
+                        readDynamicEnergyADC = readDynamicEnergyArray
+                                                                   + (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy));
+
+                        readDynamicEnergyAccum = ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0 )
+                                           + ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0);
+
+                        readDynamicEnergyOther = readDynamicEnergy - readDynamicEnergyADC - readDynamicEnergyAccum;
+
+			// cout << "\n================ 1TnC Block Energy & Power ================" << endl;
+        		// cout << "--- Read Dynamic Energy (J) ---" << endl;
+        		// if (wlDecoder.initialized) cout << "WL Decoder Read Energy:       " << wlDecoder.readDynamicEnergy << " J" << endl;
+        		// if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Read Energy: " << wlSwitchMatrix.readDynamicEnergy << " J" << endl;
+        		// if (blDecoder.initialized) cout << "BL Decoder Read Energy:       " << blDecoder.readDynamicEnergy << " J" << endl;
+        		// if (blSwitchMatrix.initialized) cout << "BL Switch Matrix Read Energy: " << blSwitchMatrix.readDynamicEnergy << " J" << endl;
+        		// if (plDecoder.initialized) cout << "PL Decoder Read Energy:       " << plDecoder.readDynamicEnergy << " J" << endl;
+        		// if (plSwitchMatrix.initialized) cout << "PL Switch Matrix Read Energy: " << plSwitchMatrix.readDynamicEnergy << " J" << endl;
+
+        		// if (numColMuxed > 1) {
+        		//     if (muxDecoder.initialized) cout << "MUX Decoder Read Energy:      " << muxDecoder.readDynamicEnergy << " J" << endl;
+        		//     if (mux.initialized) cout << "MUX Read Energy:              " << mux.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (currentSenseAmp.initialized) {
+        		//     cout << "Current Sense Amp Read Energy:" << currentSenseAmp.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (param->SARADC) {
+        		//     if (sarADC.initialized) cout << "SAR ADC Read Energy:          " << sarADC.readDynamicEnergy << " J" << endl;
+        		// } else {
+        		//     if (multilevelSenseAmp.initialized) cout << "Multilevel SA Read Energy:    " << multilevelSenseAmp.readDynamicEnergy << " J" << endl;
+        		//     if (multilevelSAEncoder.initialized) cout << "Multilevel SA Enc Read Energy:" << multilevelSAEncoder.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (numAdd > 1) {
+        		//     if (adder.initialized) cout << "Adder Read Energy:            " << adder.readDynamicEnergy << " J" << endl;
+        		//     if (dff.initialized) cout << "DFF Read Energy:              " << dff.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (numCellPerSynapse > 1) {
+        		//     if (shiftAddWeight.initialized) cout << "ShiftAdd Weight Read Energy:  " << shiftAddWeight.readDynamicEnergy << " J" << endl;
+        		// }
+        		// if (numReadPulse > 1) {
+        		//     if (shiftAddInput.initialized) cout << "ShiftAdd Input Read Energy:   " << shiftAddInput.readDynamicEnergy << " J" << endl;
+        		// }
+
+        		// cout << "--- Write Dynamic Energy (J) ---" << endl;
+        		// if (wlDecoder.initialized) cout << "WL Decoder Write Energy:      " << wlDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Write Energy:" << wlSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		// if (blDecoder.initialized) cout << "BL Decoder Write Energy:      " << blDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (blSwitchMatrix.initialized) cout << "BL Switch Matrix Write Energy:" << blSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		// if (plDecoder.initialized) cout << "PL Decoder Write Energy:      " << plDecoder.writeDynamicEnergy << " J" << endl;
+        		// if (plSwitchMatrix.initialized) cout << "PL Switch Matrix Write Energy:" << plSwitchMatrix.writeDynamicEnergy << " J" << endl;
+
+        		// if (cell.writeVoltage > 1.5) {
+        		//     if (wlLevelShifter.initialized) cout << "WL Level Shifter Write Energy:" << wlLevelShifter.writeDynamicEnergy << " J" << endl;
+        		//     if (blLevelShifter.initialized) cout << "BL Level Shifter Write Energy:" << blLevelShifter.writeDynamicEnergy << " J" << endl;
+        		//     if (plLevelShifter.initialized) cout << "PL Level Shifter Write Energy:" << plLevelShifter.writeDynamicEnergy << " J" << endl;
+        		// }
+
+        		// cout << "--- Leakage Power (W) ---" << endl;
+        		// if (wlDecoder.initialized) cout << "WL Decoder Leakage:           " << wlDecoder.leakage << " W" << endl;
+        		// if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Leakage:     " << wlSwitchMatrix.leakage << " W" << endl;
+        		// if (blDecoder.initialized) cout << "BL Decoder Leakage:           " << blDecoder.leakage << " W" << endl;
+        		// if (blSwitchMatrix.initialized) cout << "BL Switch Matrix Leakage:     " << blSwitchMatrix.leakage << " W" << endl;
+        		// if (plDecoder.initialized) cout << "PL Decoder Leakage:           " << plDecoder.leakage << " W" << endl;
+        		// if (plSwitchMatrix.initialized) cout << "PL Switch Matrix Leakage:     " << plSwitchMatrix.leakage << " W" << endl;
+        		// if (numColMuxed > 1) {
+        		//     if (muxDecoder.initialized) cout << "MUX Decoder Leakage:          " << muxDecoder.leakage << " W" << endl;
+        		//     if (mux.initialized) cout << "MUX Leakage:                  " << mux.leakage << " W" << endl;
+        		// }
+        		// if (currentSenseAmp.initialized) cout << "Current Sense Amp Leakage:    " << currentSenseAmp.leakage << " W" << endl;
+        		// if (param->SARADC && sarADC.initialized) cout << "SAR ADC Leakage:              " << sarADC.leakage << " W" << endl;
+
+        		// // --- Destructive Read-Out Write-Back Check ---
+        		// if (cell.mem_rdo == Type::dro) {
+        		//     cout << "---------------- DRO Penalty (Write-Back Energy) ----------------" << endl;
+        		//     if (wlDecoder.initialized) cout << "[Write-Back] WL Decoder:      " << wlDecoder.writeDynamicEnergy << " J" << endl;
+        		//     if (wlSwitchMatrix.initialized) cout << "[Write-Back] WL SwitchMatrix: " << wlSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		//     if (blDecoder.initialized) cout << "[Write-Back] BL Decoder:      " << blDecoder.writeDynamicEnergy << " J" << endl;
+        		//     if (blSwitchMatrix.initialized) cout << "[Write-Back] BL SwitchMatrix: " << blSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		//     if (plDecoder.initialized) cout << "[Write-Back] PL Decoder:      " << plDecoder.writeDynamicEnergy << " J" << endl;
+        		//     if (plSwitchMatrix.initialized) cout << "[Write-Back] PL SwitchMatrix: " << plSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		//     cout << "-----------------------------------------------------------------" << endl;
+        		// }
+        		// cout << "===========================================================" << endl;
+
+		
+		} else if (cell.memCellType == Type::_1T1C) {
+        		int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
+        		double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite;
+        		double totalReadActivations = numRow * activityRowRead;
+        		double decoderReadActivations = numRow * activityRowRead * numColMuxed;
+
+        		// BL (Col Plane)
+        		blDecoder.CalculatePower(decoderReadActivations, totalWriteActivations);
+        		blSwitchMatrix.CalculatePower(numColMuxed, totalWriteActivations, activityRowRead, activityColWrite);
+
+        		// WL (Row Plane)
+        		wlDecoder.CalculatePower(decoderReadActivations, totalWriteActivations);
+        		wlSwitchMatrix.CalculatePower(numColMuxed, totalWriteActivations, activityRowRead, activityColWrite);
+
+        		if (numColMuxed > 1) {
+        		    mux.CalculatePower(numColMuxed);
+        		    muxDecoder.CalculatePower(numColMuxed, 1);
+        		}
+
+        		if (param->SARADC) sarADC.CalculatePower(columnResistance, numAdd);
+        		else {
+        		    multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
+        		    multilevelSAEncoder.CalculatePower(numColMuxed * numAdd);
+        		}
+
+        		if (numCellPerSynapse > 1) shiftAddWeight.CalculatePower(numColMuxed);
+        		if (numReadPulse > 1) shiftAddInput.CalculatePower(ceil(numColMuxed/numCellPerSynapse));
+        		if (numAdd > 1) {
+        		    adder.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed));
+        		    dff.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed)*(log2(levelOutput) + ceil(log2(numAdd))/2), param->validated);
+        		}
+
+        		
+			// DRAM Destructive Read Write-Back Energy
+        		double totalWriteBackOps = numRow * activityRowRead;
+        		
+        		// Prevent division by zero if activity is 0
+        		double E_decoder_per_op = 0;
+        		if (totalWriteBackOps > 0) {
+        		    E_decoder_per_op = (blDecoder.readDynamicEnergy + wlDecoder.readDynamicEnergy) / (totalWriteBackOps * numColMuxed);
+        		}
+        		double E_sw_per_op = (blSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy) / numColMuxed;
+        		
+        		// Scale read routing energy to write voltages
+        		double voltageMultiplier = pow(cell.writeVoltage / tech.vdd, 2);
+			double peripheralWriteBackEnergy = (E_decoder_per_op + E_sw_per_op) * voltageMultiplier * totalWriteBackOps;
+
+        		double capCell = 5e-15; // 5fF cell capacitance
+        		double eWritePerCell = (0.5 * capCell * pow(tech.vdd, 2));
+        		
+			// Write-back the destroyed array data (assuming 50% 1s)
+        		double arrayWriteBackEnergy = eWritePerCell * (numRow * activityRowRead * numCol) * 0.5;
+
+        		double writeBackEnergy = peripheralWriteBackEnergy + arrayWriteBackEnergy;
+        		readDynamicEnergyArray = writeBackEnergy;
+
+        		// Calculate total Dynamic Energy
+        		readDynamicEnergy = readDynamicEnergyArray
+        		                  + wlDecoder.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy
+        		                  + blDecoder.readDynamicEnergy + blSwitchMatrix.readDynamicEnergy
+        		                  + ((numColMuxed > 1) ? (mux.readDynamicEnergy + muxDecoder.readDynamicEnergy) : 0)
+        		                  + (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy))
+        		                  + ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0) + ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0)
+        		                  + ((numAdd > 1) ? (adder.readDynamicEnergy + dff.readDynamicEnergy) : 0);
+
+        		// 3. Standard Write Dynamic Energy
+        		// Selected Cell Capacitors: Physically charging the 5fF cells
+        		double cellEnergyWrite = (numRow * activityRowWrite * numCol * activityColWrite) * 0.5 * 5e-15 * pow(cell.writeVoltage, 2);
+
+        		// INHIBITION ENERGY (Unselected Bitlines):
+        		// Unselected bitlines on the active row must be held/precharged to prevent write-disturb.
+        		// This causes capacitive AC toggling across the length of the unselected wires.
+        		// double blEnergyUnselected = (numCol * (1.0 - activityColWrite)) * 0.5 * capBL * pow(tech.vdd, 2);
+
+        		double writeDynamicEnergyArray = cellEnergyWrite;
+
+        		// B. Total Write Dynamic Energy Aggregation
+        		// Note: ADCs and Accumulation circuits are OFF during the standard write phase.
+        		writeDynamicEnergy = writeDynamicEnergyArray
+        		                   + wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy
+        		                   + blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy
+        		                   + ((numColMuxed > 1) ? (mux.writeDynamicEnergy + muxDecoder.writeDynamicEnergy) : 0);
+
+
+
+        		// double ArrayWriteEnergy = eWritePerCell * numWriteCellPerOperationNeuro * numRow * activityRowWrite * 0.5;
+        		// double peripheralWriteEnergy = blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy + wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy;
+        		// double inhibitionEnergy = 0.5 * 0.5e-15 * pow(cell.writeVoltage / 3.0, 2) * ((param->numRowSubArrayPhysical * param->numColSubArray) - numWriteCellPerOperationNeuro) * (numWriteOperationPerRow * numRow * activityRowWrite);
+
+        		// writeDynamicEnergyArray = peripheralWriteEnergy + ArrayWriteEnergy + inhibitionEnergy;
+        		// writeDynamicEnergy = writeDynamicEnergyArray;
+
+        		// 4. Leakage Power
+        		leakage = blDecoder.leakage + blSwitchMatrix.leakage
+        		        + wlDecoder.leakage + wlSwitchMatrix.leakage
+        		        + ((numColMuxed > 1) ? (mux.leakage + muxDecoder.leakage) : 0)
+        		        + (param->SARADC ? sarADC.leakage : (multilevelSenseAmp.leakage + multilevelSAEncoder.leakage))
+        		        + ((numCellPerSynapse > 1) ? shiftAddWeight.leakage : 0) + ((numReadPulse > 1) ? shiftAddInput.leakage : 0)
+        		        + ((numAdd > 1) ? (adder.leakage + dff.leakage) : 0);
+
+        		// 5. DRAM Refresh Power Penalty
+        		
+        		// Total time before a cell loses its charge
+        		// double tRefresh = 32e-3; // 32 ms retention time
+			double tRefresh = 20.48e-3; // 20.48 ms
+
+        		// Using your math: Distributed refresh interval per row (32ms / 512 = 0.0625ms)
+        		double tRefreshPerRow = tRefresh / numRow; 
+
+        		// A refresh is a Destructive Read followed by a Write-Back.
+        		// We extract the base peripheral energy required to activate ONE row:
+        		double E_decoder_per_row = 0;
+        		if (totalWriteBackOps > 0) {
+        		    E_decoder_per_row = (blDecoder.readDynamicEnergy + wlDecoder.readDynamicEnergy) / (totalWriteBackOps * numColMuxed);
+        		}
+        		double E_sw_per_row = (blSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy) / numColMuxed;
+        		
+        		// 1. Energy to Read the row
+        		double peripheralReadRowEnergy = E_decoder_per_row + E_sw_per_row;
+        		
+        		// 2. Energy to Write-Back the row (Scaled to write voltage)
+        		double peripheralWriteRowEnergy = peripheralReadRowEnergy * pow(cell.writeVoltage / tech.vdd, 2);
+        		
+        		// 3. Energy to physically charge the cell capacitors in the row (assuming 50% 1s)
+        		double arrayWriteRowEnergy = eWritePerCell * numCol * 0.5; 
+
+        		// Total energy consumed during a single row's refresh cycle
+        		double totalRefreshEnergyPerRow = peripheralReadRowEnergy + peripheralWriteRowEnergy + arrayWriteRowEnergy;
+
+        		// Power = Energy / Time 
+        		double refreshPower = totalRefreshEnergyPerRow / tRefreshPerRow;
+        		
+        		// Add this continuous background power bleed to the static leakage
+        		leakage += refreshPower;
+
+			readDynamicEnergyADC = (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy));
+        		readDynamicEnergyAccum = ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0) + ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0);
+        		readDynamicEnergyOther = readDynamicEnergy - readDynamicEnergyADC - readDynamicEnergyAccum;
+
+			// ====================================================================
+        		// DEBUGGING: 1T1C ENERGY DUMP
+        		// // ====================================================================
+        		//     std::cout << "\n================ 1T1C DRAM ENERGY DEBUG =================\n";
+        		//     std::cout << "--- 1. Array Dimensions & Physics ---\n";
+        		//     std::cout << "numRow: " << numRow << "\n";
+        		//     std::cout << "numCol: " << numCol << "\n";
+        		//     std::cout << "activityRowRead: " << activityRowRead << "\n";
+        		//     std::cout << "tech.vdd: " << tech.vdd << " V\n";
+        		//     std::cout << "cell.readVoltage: " << cell.readVoltage << " V\n";
+        		//     std::cout << "cell.writeVoltage: " << cell.writeVoltage << " V\n";
+        		//     std::cout << "capWL (Total Wordline Cap): " << capWL * 1e15 << " fF\n";
+        		//     std::cout << "capBL (Total Bitline Cap): " << capBL * 1e15 << " fF\n";
+
+        		//     //std::cout << "\n--- 2. READ PHASE ENERGY (Per Operation) ---\n";
+        		//     //std::cout << "wlEnergyRead: " << wlEnergyRead * 1e12 << " pJ\n";
+        		//     //std::cout << "blEnergyRead: " << blEnergyRead * 1e12 << " pJ\n";
+        		//     //std::cout << "cellEnergyRead: " << cellEnergyRead * 1e12 << " pJ\n";
+        		//     //std::cout << ">> ReadEnergyArrayBase: " << ReadEnergyArrayBase * 1e12 << " pJ\n";
+
+        		//     std::cout << "\n--- 3. WRITE-BACK (DRO) PHASE ENERGY ---\n";
+        		//     //std::cout << "wlEnergyWB: " << wlEnergyWB * 1e12 << " pJ\n";
+        		//     //std::cout << "blEnergyWB: " << blEnergyWB * 1e12 << " pJ\n";
+        		//     //std::cout << "cellEnergyWB: " << cellEnergyWB * 1e12 << " pJ\n";
+        		//     std::cout << "eWritePerCell: " << eWritePerCell * 1e12 << " pJ\n";
+        		//     std::cout << "arrayWriteBackEnergy (Internal): " << arrayWriteBackEnergy * 1e12 << " pJ\n";
+        		//     std::cout << "peripheralWriteBackEnergy (Drivers): " << peripheralWriteBackEnergy * 1e12 << " pJ\n";
+        		//     std::cout << ">> writeBackEnergy: " << writeBackEnergy * 1e12 << " pJ\n";
+
+        		//     std::cout << "\n--- 4. AGGREGATED TOTALS ---\n";
+        		//     std::cout << "readDynamicEnergyArray (Read + DRO): " << readDynamicEnergyArray * 1e12 << " pJ\n";
+        		//     std::cout << "readDynamicEnergyADC (Sense Amps): " << readDynamicEnergyADC * 1e12 << " pJ\n";
+
+        		//     // Prove the math: E = 0.5 * C * V^2
+        		//     double manual_bl_energy = 0.5 * capBL * pow(cell.writeVoltage, 2) * numCol;
+        		//     std::cout << "\n--- 5. MANUAL MATH CHECK ---\n";
+        		//     std::cout << "0.5 * capBL * (V_write)^2 * numCol = " << manual_bl_energy * 1e12 << " pJ\n";
+        		//     std::cout << "=========================================================\n\n";
+
+		} else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
 			// Anni update
 			leakageSRAMInUse = 0;
 			if (conventionalSequential) {
@@ -2050,7 +5529,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 					muxDecoder.CalculatePower(numColMuxed, 1);
 				}
 
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculatePower(columnResistance, numRow*activityRowRead);
 				} else {
 					multilevelSenseAmp.CalculatePower(columnResistance, numRow*activityRowRead);
@@ -2119,6 +5598,67 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 				leakage += adder.leakage;
 				leakage += shiftAddWeight.leakage + shiftAddInput.leakage;
 					
+			cout << "\n================ RRAM/FeFET (Sequential) Block Energy & Power ================" << endl;
+				 cout << "--- Read Dynamic Energy (J) ---" << endl;
+				 cout << "WL Decoder Read Energy:       " << wlDecoder.readDynamicEnergy << " J" << endl;
+				 if (cell.accessType == CMOS_access) {
+				     cout << "WL Decoder Driver Read E:     " << wlNewDecoderDriver.readDynamicEnergy << " J" << endl;
+				 } else {
+				     cout << "WL Decoder Driver Read E:     " << wlDecoderDriver.readDynamicEnergy << " J" << endl;
+				 }
+				 if (numColMuxed > 1) {
+				     cout << "MUX Decoder Read Energy:      " << muxDecoder.readDynamicEnergy << " J" << endl;
+				     cout << "MUX Read Energy:              " << mux.readDynamicEnergy << " J" << endl;
+				 }
+				 if (param->SARADC) {
+				     cout << "SAR ADC Read Energy:          " << sarADC.readDynamicEnergy << " J" << endl;
+				 } else {
+				     cout << "Multilevel SA Read Energy:    " << multilevelSenseAmp.readDynamicEnergy << " J" << endl;
+				     if (avgWeightBit > 1) cout << "Multilevel SA Enc Read Energy:" << multilevelSAEncoder.readDynamicEnergy << " J" << endl;
+				 }
+				 cout << "Adder Read Energy:            " << adder.readDynamicEnergy << " J" << endl;
+				 cout << "DFF Read Energy:              " << dff.readDynamicEnergy << " J" << endl;
+				 if (numCellPerSynapse > 1) cout << "ShiftAdd Weight Read Energy:  " << shiftAddWeight.readDynamicEnergy << " J" << endl;
+				 if (numReadPulse > 1) cout << "ShiftAdd Input Read Energy:   " << shiftAddInput.readDynamicEnergy << " J" << endl;
+
+				 cout << "--- Write Dynamic Energy (J) ---" << endl;
+				 cout << "WL Decoder Write Energy:      " << wlDecoder.writeDynamicEnergy << " J" << endl;
+				 if (cell.accessType == CMOS_access) {
+				     cout << "WL Decoder Driver Write E:    " << wlNewDecoderDriver.writeDynamicEnergy << " J" << endl;
+				 } else {
+				     cout << "WL Decoder Driver Write E:    " << wlDecoderDriver.writeDynamicEnergy << " J" << endl;
+				 }
+				 cout << "SL Switch Matrix Write Energy:" << slSwitchMatrix.writeDynamicEnergy << " J" << endl;
+
+				 if (cell.writeVoltage > 1.5) {
+				     cout << "WL Level Shifter Write Energy:" << wllevelshifter.writeDynamicEnergy << " J" << endl;
+				     cout << "BL Level Shifter Write Energy:" << bllevelshifter.writeDynamicEnergy << " J" << endl;
+				     cout << "SL Level Shifter Write Energy:" << sllevelshifter.writeDynamicEnergy << " J" << endl;
+				 }
+
+				 cout << "--- Leakage Power (W) ---" << endl;
+				 cout << "WL Decoder Leakage:           " << wlDecoder.leakage << " W" << endl;
+				 if (cell.accessType == CMOS_access) {
+				     cout << "WL Decoder Driver Leakage:    " << wlNewDecoderDriver.leakage << " W" << endl;
+				 } else {
+				     cout << "WL Decoder Driver Leakage:    " << wlDecoderDriver.leakage << " W" << endl;
+				 }
+				 cout << "SL Switch Matrix Leakage:     " << slSwitchMatrix.leakage << " W" << endl;
+				 if (numColMuxed > 1) {
+				     cout << "MUX Decoder Leakage:          " << muxDecoder.leakage << " W" << endl;
+				     cout << "MUX Leakage:                  " << mux.leakage << " W" << endl;
+				 }
+				 if (param->SARADC) {
+				     cout << "SAR ADC Leakage:              " << sarADC.leakage << " W" << endl;
+				 } else {
+				     cout << "Multilevel SA Leakage:        " << multilevelSenseAmp.leakage << " W" << endl;
+				     if (avgWeightBit > 1) cout << "Multilevel SA Enc Leakage:    " << multilevelSAEncoder.leakage << " W" << endl;
+				 }
+				 cout << "Adder Leakage:                " << adder.leakage << " W" << endl;
+				 cout << "DFF Leakage:                  " << dff.leakage << " W" << endl;
+				 if (numCellPerSynapse > 1) cout << "ShiftAdd Weight Leakage:      " << shiftAddWeight.leakage << " W" << endl;
+				 if (numReadPulse > 1) cout << "ShiftAdd Input Leakage:       " << shiftAddInput.leakage << " W" << endl;
+				 cout << "======================================================================" << endl;
 			} else if (conventionalParallel) {
 				double numReadCells = (int)ceil((double)numCol/numColMuxed);    // similar parameter as numReadCellPerOperationNeuro, which is for SRAM
 				int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
@@ -2139,7 +5679,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 					muxDecoder.CalculatePower(numColMuxed, 1);
 				}
 				// Anni update: numAdd
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculatePower(columnResistance, numAdd);
 				} else {
 					multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
@@ -2216,6 +5756,61 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 				leakage += dff.leakage;
 				leakage += adder.leakage;
 				
+			 cout << "\n================ RRAM/FeFET Block Energy & Power ================" << endl;
+        		 cout << "--- Read Dynamic Energy (J) ---" << endl;
+        		 if (wlDecoder.initialized) cout << "WL Decoder Read Energy:       " << wlDecoder.readDynamicEnergy << " J" << endl;
+        		 if (wlNewDecoderDriver.initialized) cout << "WL New Decoder Driver Read E: " << wlNewDecoderDriver.readDynamicEnergy << " J" << endl;
+        		 if (wlDecoderDriver.initialized) cout << "WL Decoder Driver Read Energy:" << wlDecoderDriver.readDynamicEnergy << " J" << endl;
+        		 if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Read Energy: " << wlSwitchMatrix.readDynamicEnergy << " J" << endl;
+        		 if (wlNewSwitchMatrix.initialized) cout << "WL New Switch Matrix Read E:  " << wlNewSwitchMatrix.readDynamicEnergy << " J" << endl;
+        		 if (slSwitchMatrix.initialized) cout << "SL Switch Matrix Read Energy: " << slSwitchMatrix.readDynamicEnergy << " J" << endl;
+
+        		 if (precharger.initialized) {
+        		     cout << "Precharger Read Energy:       " << precharger.readDynamicEnergy << " J" << endl;
+        		 }
+        		 if (numColMuxed > 1) {
+        		     if (muxDecoder.initialized) cout << "MUX Decoder Read Energy:      " << muxDecoder.readDynamicEnergy << " J" << endl;
+        		     if (mux.initialized) cout << "MUX Read Energy:              " << mux.readDynamicEnergy << " J" << endl;
+        		 }
+        		 if (param->SARADC) {
+        		     if (sarADC.initialized) cout << "SAR ADC Read Energy:          " << sarADC.readDynamicEnergy << " J" << endl;
+        		 } else {
+        		     if (multilevelSenseAmp.initialized) cout << "Multilevel SA Read Energy:    " << multilevelSenseAmp.readDynamicEnergy << " J" << endl;
+        		 }
+        		 if (numAdd > 1) {
+        		     if (adder.initialized) cout << "Adder Read Energy:            " << adder.readDynamicEnergy << " J" << endl;
+        		     if (dff.initialized) cout << "DFF Read Energy:              " << dff.readDynamicEnergy << " J" << endl;
+        		 }
+        		 if (numCellPerSynapse > 1) {
+        		     if (shiftAddWeight.initialized) cout << "ShiftAdd Weight Read Energy:  " << shiftAddWeight.readDynamicEnergy << " J" << endl;
+        		 }
+        		 if (numReadPulse > 1) {
+        		     if (shiftAddInput.initialized) cout << "ShiftAdd Input Read Energy:   " << shiftAddInput.readDynamicEnergy << " J" << endl;
+        		 }
+
+        		 cout << "--- Write Dynamic Energy (J) ---" << endl;
+        		 if (wlDecoder.initialized) cout << "WL Decoder Write Energy:      " << wlDecoder.writeDynamicEnergy << " J" << endl;
+        		 if (wlNewDecoderDriver.initialized) cout << "WL New Decoder Driver Write E:" << wlNewDecoderDriver.writeDynamicEnergy << " J" << endl;
+        		 if (wlDecoderDriver.initialized) cout << "WL Decoder Driver Write E:    " << wlDecoderDriver.writeDynamicEnergy << " J" << endl;
+        		 if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Write Energy:" << wlSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		 if (wlNewSwitchMatrix.initialized) cout << "WL New Switch Matrix Write E: " << wlNewSwitchMatrix.writeDynamicEnergy << " J" << endl;
+        		 if (slSwitchMatrix.initialized) cout << "SL Switch Matrix Write Energy:" << slSwitchMatrix.writeDynamicEnergy << " J" << endl;
+
+        		 if (cell.writeVoltage > 1.5) {
+        		     if (wllevelshifter.initialized) cout << "WL Level Shifter Write Energy:" << wllevelshifter.writeDynamicEnergy << " J" << endl;
+        		     if (bllevelshifter.initialized) cout << "BL Level Shifter Write Energy:" << bllevelshifter.writeDynamicEnergy << " J" << endl;
+        		     if (sllevelshifter.initialized) cout << "SL Level Shifter Write Energy:" << sllevelshifter.writeDynamicEnergy << " J" << endl;
+        		 }
+
+        		 cout << "--- Leakage Power (W) ---" << endl;
+        		 if (wlDecoder.initialized) cout << "WL Decoder Leakage:           " << wlDecoder.leakage << " W" << endl;
+        		 if (wlNewDecoderDriver.initialized) cout << "WL New Decoder Drv Leakage:   " << wlNewDecoderDriver.leakage << " W" << endl;
+        		 if (wlSwitchMatrix.initialized) cout << "WL Switch Matrix Leakage:     " << wlSwitchMatrix.leakage << " W" << endl;
+        		 if (slSwitchMatrix.initialized) cout << "SL Switch Matrix Leakage:     " << slSwitchMatrix.leakage << " W" << endl;
+        		 if (numColMuxed > 1 && muxDecoder.initialized) cout << "MUX Decoder Leakage:          " << muxDecoder.leakage << " W" << endl;
+        		 if (param->SARADC && sarADC.initialized) cout << "SAR ADC Leakage:              " << sarADC.leakage << " W" << endl;
+        		 cout << "=================================================================" << endl;
+			
 			} else if (BNNsequentialMode || XNORsequentialMode) {
 				double numReadCells = (int)ceil((double)numCol/numColMuxed);    // similar parameter as numReadCellPerOperationNeuro, which is for SRAM
 				double numWriteCells = (int)ceil((double)numCol/*numWriteColMuxed*/); 
@@ -2305,7 +5900,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 					muxDecoder.CalculatePower(numColMuxed, 1);
 				}
 				// Anni update: numAdd
-				if (SARADC) {
+				if (param->SARADC) {
 					sarADC.CalculatePower(columnResistance, numAdd);
 				} else {
 					multilevelSenseAmp.CalculatePower(columnResistance, numAdd);
@@ -2374,20 +5969,20 @@ void SubArray::CalculatePower(const vector<double> &columnResistance) {
 void SubArray::PrintProperty() {
 
 	if (cell.memCellType == Type::SRAM) {
-		
+
 		cout << endl << endl;
 	    cout << "Array:" << endl;
 	    cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
 	    cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
 	    cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
-		
+
 		precharger.PrintProperty("precharger");
 		sramWriteDriver.PrintProperty("sramWriteDriver");
-		
+
 		if (conventionalSequential) {
-			wlDecoder.PrintProperty("wlDecoder");			
+			wlDecoder.PrintProperty("wlDecoder");
 			senseAmp.PrintProperty("senseAmp");
-			dff.PrintProperty("dff"); 
+			dff.PrintProperty("dff");
 			adder.PrintProperty("adder");
 			if (numReadPulse > 1) {
 				shiftAddWeight.PrintProperty("shiftAddWeight");
@@ -2395,36 +5990,105 @@ void SubArray::PrintProperty() {
 			}
 		} else if (conventionalParallel) {
 			wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 			if (numReadPulse > 1) {
 				shiftAddWeight.PrintProperty("shiftAddWeight");
 				shiftAddInput.PrintProperty("shiftAddInput");
 			}
 		} else if (BNNsequentialMode || XNORsequentialMode) {
-			wlDecoder.PrintProperty("wlDecoder");			
+			wlDecoder.PrintProperty("wlDecoder");
 			senseAmp.PrintProperty("senseAmp");
-			dff.PrintProperty("dff"); 
+			dff.PrintProperty("dff");
 			adder.PrintProperty("adder");
 		} else if (BNNparallelMode || XNORparallelMode) {
 			wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 		} else {
 			wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 			if (numReadPulse > 1) {
 				shiftAddWeight.PrintProperty("shiftAddWeight");
 				shiftAddInput.PrintProperty("shiftAddInput");
 			}
 		}
-		
+
+	} else if (cell.memCellType == Type::_2TnC) {
+    		    cout << endl << endl;
+    		    cout << "Array:" << endl;
+    		    cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
+    		    cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
+    		    cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
+
+    		    wwlSwitchMatrix.PrintProperty("wwlSwitchMatrix");
+    		    wplSwitchMatrix.PrintProperty("wplSwitchMatrix");
+    		    rblSwitchMatrix.PrintProperty("rblSwitchMatrix");
+    		    wblSwitchMatrix.PrintProperty("wblSwitchMatrix");
+    		    sslSwitchMatrix.PrintProperty("sslSwitchMatrix");
+    		    rslSwitchMatrix.PrintProperty("rslSwitchMatrix");
+
+    		    if (numColMuxed > 1) {
+    		        mux.PrintProperty("mux");
+    		        muxDecoder.PrintProperty("muxDecoder");
+    		    }
+    		    if (param->SARADC) {
+    		        sarADC.PrintProperty("sarADC");
+    		    } else {
+    		        multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+    		        multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+    		    }
+		    currentSenseAmp.PrintProperty("currentSenseAmp");
+    		    if (numReadPulse > 1) {
+    		        shiftAddWeight.PrintProperty("shiftAddWeight");
+    		        shiftAddInput.PrintProperty("shiftAddInput");
+    		    }
+
+	} else if (cell.memCellType == Type::_1TnC) {
+                  cout << endl << endl;
+                  cout << "Array:" << endl;
+                  cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
+                  cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
+                  cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
+
+                  wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+                  plSwitchMatrix.PrintProperty("plSwitchMatrix");
+                  blSwitchMatrix.PrintProperty("blSwitchMatrix");
+
+                  if (numColMuxed > 1) {
+                      mux.PrintProperty("mux");
+                      muxDecoder.PrintProperty("muxDecoder");
+                  }
+                  if (param->SARADC) {
+                      sarADC.PrintProperty("sarADC");
+                  } else {
+                      multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+                      multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+                  }
+		  currentSenseAmp.PrintProperty("currentSenseAmp");
+                  if (numReadPulse > 1) {
+                      shiftAddWeight.PrintProperty("shiftAddWeight");
+                      shiftAddInput.PrintProperty("shiftAddInput");
+                  }
+
 	} else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
-		
+
 		cout << endl << endl;
-	    cout << "Array:" << endl;
-	    cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
+	    	cout << "Array:" << endl;
+	    	cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
 	    cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
 	    cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
 		cout << "Write Latency = " << writeLatencyArray*1e9 << "ns" << endl;
@@ -2435,12 +6099,16 @@ void SubArray::PrintProperty() {
 				wlNewDecoderDriver.PrintProperty("wlNewDecoderDriver");
 			} else {
 				wlDecoderDriver.PrintProperty("wlDecoderDriver");
-			} 
+			}
 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
 			mux.PrintProperty("mux");
 			muxDecoder.PrintProperty("muxDecoder");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp or single-bit SenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp or single-bit SenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 			adder.PrintProperty("adder");
 			dff.PrintProperty("dff");
 			if (numReadPulse > 1) {
@@ -2456,8 +6124,12 @@ void SubArray::PrintProperty() {
 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
 			mux.PrintProperty("mux");
 			muxDecoder.PrintProperty("muxDecoder");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 			if (numReadPulse > 1) {
 				shiftAddWeight.PrintProperty("shiftAddWeight");
 				shiftAddInput.PrintProperty("shiftAddInput");
@@ -2468,7 +6140,7 @@ void SubArray::PrintProperty() {
 				wlNewDecoderDriver.PrintProperty("wlNewDecoderDriver");
 			} else {
 				wlDecoderDriver.PrintProperty("wlDecoderDriver");
-			} 
+			}
 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
 			mux.PrintProperty("mux");
 			muxDecoder.PrintProperty("muxDecoder");
@@ -2484,8 +6156,12 @@ void SubArray::PrintProperty() {
 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
 			mux.PrintProperty("mux");
 			muxDecoder.PrintProperty("muxDecoder");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 		} else {
 			if (cell.accessType == CMOS_access) {
 				wlNewSwitchMatrix.PrintProperty("wlNewSwitchMatrix");
@@ -2495,16 +6171,185 @@ void SubArray::PrintProperty() {
 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
 			mux.PrintProperty("mux");
 			muxDecoder.PrintProperty("muxDecoder");
-			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
-			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			if (param->SARADC) {
+				sarADC.PrintProperty("sarADC");
+			} else {
+				multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+				multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+			}
 			if (numReadPulse > 1) {
 				shiftAddWeight.PrintProperty("shiftAddWeight");
 				shiftAddInput.PrintProperty("shiftAddInput");
 			}
 		}
-	} 
+	}
 	FunctionUnit::PrintProperty("SubArray");
 	cout << "Used Area = " << usedArea*1e12 << "um^2" << endl;
 	cout << "Empty Area = " << emptyArea*1e12 << "um^2" << endl;
 }
+
+// void SubArray::PrintProperty() {
+// 
+// 	if (cell.memCellType == Type::SRAM) {
+// 		
+// 		cout << endl << endl;
+// 	    cout << "Array:" << endl;
+// 	    cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
+// 	    cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
+// 	    cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
+// 		
+// 		precharger.PrintProperty("precharger");
+// 		sramWriteDriver.PrintProperty("sramWriteDriver");
+// 		
+// 		if (conventionalSequential) {
+// 			wlDecoder.PrintProperty("wlDecoder");			
+// 			senseAmp.PrintProperty("senseAmp");
+// 			dff.PrintProperty("dff"); 
+// 			adder.PrintProperty("adder");
+// 			if (numReadPulse > 1) {
+// 				shiftAddWeight.PrintProperty("shiftAddWeight");
+// 				shiftAddInput.PrintProperty("shiftAddInput");
+// 			}
+// 		} else if (conventionalParallel) {
+// 			wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 			if (numReadPulse > 1) {
+// 				shiftAddWeight.PrintProperty("shiftAddWeight");
+// 				shiftAddInput.PrintProperty("shiftAddInput");
+// 			}
+// 		} else if (BNNsequentialMode || XNORsequentialMode) {
+// 			wlDecoder.PrintProperty("wlDecoder");			
+// 			senseAmp.PrintProperty("senseAmp");
+// 			dff.PrintProperty("dff"); 
+// 			adder.PrintProperty("adder");
+// 		} else if (BNNparallelMode || XNORparallelMode) {
+// 			wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 		} else {
+// 			wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 			if (numReadPulse > 1) {
+// 				shiftAddWeight.PrintProperty("shiftAddWeight");
+// 				shiftAddInput.PrintProperty("shiftAddInput");
+// 			}
+// 		}
+// 		
+// 	} else if (cell.memCellType == Type::_2TnC) {
+//     		    cout << endl << endl;
+//     		    cout << "Array:" << endl;
+//     		    cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
+//     		    cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
+//     		    cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
+//     		    
+//     		    wwlSwitchMatrix.PrintProperty("wwlSwitchMatrix");
+//     		    wplSwitchMatrix.PrintProperty("wplSwitchMatrix");
+//     		    rblSwitchMatrix.PrintProperty("rblSwitchMatrix");
+//     		    wblSwitchMatrix.PrintProperty("wblSwitchMatrix");
+//     		    sslSwitchMatrix.PrintProperty("sslSwitchMatrix");
+//     		    rslSwitchMatrix.PrintProperty("rslSwitchMatrix");
+//     		    
+//     		    if (numColMuxed > 1) {
+//     		        mux.PrintProperty("mux");
+//     		        muxDecoder.PrintProperty("muxDecoder");
+//     		    }
+//     		    if (param->SARADC) {
+//     		        sarADC.PrintProperty("sarADC");
+//     		    } else {
+//     		        multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+//     		        multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+//     		    }
+//     		    if (numReadPulse > 1) {
+//     		        shiftAddWeight.PrintProperty("shiftAddWeight");
+//     		        shiftAddInput.PrintProperty("shiftAddInput");
+//     		    }
+//     		
+// 	} else if (cell.memCellType == Type::RRAM || cell.memCellType == Type::FeFET) {
+// 		
+// 		cout << endl << endl;
+// 	    	cout << "Array:" << endl;
+// 	    	cout << "Area = " << heightArray*1e6 << "um x " << widthArray*1e6 << "um = " << areaArray*1e12 << "um^2" << endl;
+// 	    cout << "Read Dynamic Energy = " << readDynamicEnergyArray*1e12 << "pJ" << endl;
+// 	    cout << "Write Dynamic Energy = " << writeDynamicEnergyArray*1e12 << "pJ" << endl;
+// 		cout << "Write Latency = " << writeLatencyArray*1e9 << "ns" << endl;
+// 
+// 		if (conventionalSequential) {
+// 			wlDecoder.PrintProperty("wlDecoder");
+// 			if (cell.accessType == CMOS_access) {
+// 				wlNewDecoderDriver.PrintProperty("wlNewDecoderDriver");
+// 			} else {
+// 				wlDecoderDriver.PrintProperty("wlDecoderDriver");
+// 			} 
+// 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
+// 			mux.PrintProperty("mux");
+// 			muxDecoder.PrintProperty("muxDecoder");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp or single-bit SenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 			adder.PrintProperty("adder");
+// 			dff.PrintProperty("dff");
+// 			if (numReadPulse > 1) {
+// 				shiftAddWeight.PrintProperty("shiftAddWeight");
+// 				shiftAddInput.PrintProperty("shiftAddInput");
+// 			}
+// 		} else if (conventionalParallel) {
+// 			if (cell.accessType == CMOS_access) {
+// 				wlNewSwitchMatrix.PrintProperty("wlNewSwitchMatrix");
+// 			} else {
+// 				wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+// 			}
+// 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
+// 			mux.PrintProperty("mux");
+// 			muxDecoder.PrintProperty("muxDecoder");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 			if (numReadPulse > 1) {
+// 				shiftAddWeight.PrintProperty("shiftAddWeight");
+// 				shiftAddInput.PrintProperty("shiftAddInput");
+// 			}
+// 		} else if (BNNsequentialMode || XNORsequentialMode) {
+// 			wlDecoder.PrintProperty("wlDecoder");
+// 			if (cell.accessType == CMOS_access) {
+// 				wlNewDecoderDriver.PrintProperty("wlNewDecoderDriver");
+// 			} else {
+// 				wlDecoderDriver.PrintProperty("wlDecoderDriver");
+// 			} 
+// 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
+// 			mux.PrintProperty("mux");
+// 			muxDecoder.PrintProperty("muxDecoder");
+// 			rowCurrentSenseAmp.PrintProperty("currentSenseAmp");
+// 			adder.PrintProperty("adder");
+// 			dff.PrintProperty("dff");
+// 		} else if (BNNparallelMode || XNORparallelMode) {
+// 			if (cell.accessType == CMOS_access) {
+// 				wlNewSwitchMatrix.PrintProperty("wlNewSwitchMatrix");
+// 			} else {
+// 				wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+// 			}
+// 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
+// 			mux.PrintProperty("mux");
+// 			muxDecoder.PrintProperty("muxDecoder");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 		} else {
+// 			if (cell.accessType == CMOS_access) {
+// 				wlNewSwitchMatrix.PrintProperty("wlNewSwitchMatrix");
+// 			} else {
+// 				wlSwitchMatrix.PrintProperty("wlSwitchMatrix");
+// 			}
+// 			slSwitchMatrix.PrintProperty("slSwitchMatrix");
+// 			mux.PrintProperty("mux");
+// 			muxDecoder.PrintProperty("muxDecoder");
+// 			multilevelSenseAmp.PrintProperty("multilevelSenseAmp");
+// 			multilevelSAEncoder.PrintProperty("multilevelSAEncoder");
+// 			if (numReadPulse > 1) {
+// 				shiftAddWeight.PrintProperty("shiftAddWeight");
+// 				shiftAddInput.PrintProperty("shiftAddInput");
+// 			}
+// 		}
+// 	} 
+// 	FunctionUnit::PrintProperty("SubArray");
+// 	cout << "Used Area = " << usedArea*1e12 << "um^2" << endl;
+// 	cout << "Empty Area = " << emptyArea*1e12 << "um^2" << endl;
 

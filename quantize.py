@@ -113,7 +113,7 @@ def quantize_model(args, criterion, data_loader, data_loader_test):
     # Try to load user trained model
     if args.dataset != 'imagenet':
         print(f"\nLoading pretrained model {saved_model}...")
-        state_dict = torch.load(saved_model)
+        state_dict = {}
 
         # if model was saved after training with nn.DataParallel, remove 'module' from layer names
         for key in list(state_dict.keys()):
@@ -121,7 +121,7 @@ def quantize_model(args, criterion, data_loader, data_loader_test):
                 state_dict[key.replace('module.', '')] = state_dict[key]
                 del state_dict[key]
 
-        model.load_state_dict(state_dict)
+        # model.load_state_dict(state_dict)
 
 
     model.to("cuda")

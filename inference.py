@@ -32,8 +32,8 @@ def parse_args():
     parser.add_argument('--hardware',type=int, default=1, help='run hardware inference simulation')
     parser.add_argument('--ppa', type=int, default=1, help='run power, performance, and area analysis (C++)')
     parser.add_argument('--num_batches', type=int, default=-1, help='number of batches to run in hardware inference simulation, -1 for full dataset')
-    parser.add_argument('--sub_array', type=str, default="[128, 128]", help='size of subArray (e.g. 128x128)')
-    parser.add_argument('--parallel_read', type=int, default=128, help='number of rows read in parallel (<= subArray e.g. 32)')
+    parser.add_argument('--sub_array', type=str, default="[4096, 64]", help='size of subArray (e.g. 128x128)')
+    parser.add_argument('--parallel_read', type=int, default=64, help='number of rows read in parallel (<= subArray e.g. 32)')
     parser.add_argument('--weight_precision', type=int, default=8, help='number of bits to quantize the weights to (integer)')
     parser.add_argument('--input_precision', type=int, default=8, help='number of bits to quantize the inputs to (integer)')
     parser.add_argument('--dac_precision', type=int, default=1, help='DAC precision (e.g. 1-bit)')
@@ -119,6 +119,8 @@ def main():
 
     if args.num_batches == -1:
         args.num_batches = len(data_loader_test)
+
+    args.sub_array = [4096, 64]
 
     # Create layer_record directory and NetWork.csv
     hook.make_records(args)

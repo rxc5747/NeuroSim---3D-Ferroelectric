@@ -43,7 +43,9 @@ class Param {
 public:
 	Param();
 
-	int operationmode, operationmodeBack, memcelltype, accesstype, transistortype, deviceroadmap;      		
+	int operationmode, operationmodeBack, memcelltype, accesstype, transistortype, deviceroadmap;     
+	
+	int mem_rdo;	
 	
 	double heightInFeatureSizeSRAM, widthInFeatureSizeSRAM, widthSRAMCellNMOS, widthSRAMCellPMOS, widthAccessCMOS, minSenseVoltage;
 	 
@@ -144,6 +146,27 @@ public:
 
 	// Cap update 20250206
 	double chargeDelay;
+
+
+	double heightInFeatureSize2TnC;
+        double widthInFeatureSize2TnC;
+        
+	double heightInFeatureSize1TnC;
+        double widthInFeatureSize1TnC;
+
+	double heightInFeatureSize1T1C;
+        double widthInFeatureSize1T1C;
+
+	int numCapacitors;
+        double capacitance;
+
+	int numRowSubArrayPhysical;
+	int numColSubArrayPhysical;
+	int bitsPerCell; // Set this to 8 for your 2T8C
+	
+	double readDisturbFactor;
+    	double writeDisturbFactor;
+
 };
 
 #endif

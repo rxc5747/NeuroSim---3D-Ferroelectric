@@ -1,0 +1,1 @@
+./NeuroSIM/main ./NeuroSIM/NetWork_resnet.csv 8 8 8192 512 

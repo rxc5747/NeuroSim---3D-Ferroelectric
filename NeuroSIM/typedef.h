@@ -45,6 +45,15 @@ namespace Type {	// To prevent name collision
 		RRAM,
 		FeFET,
 		Cap, //20250206 update
+		_2TnC,
+		_1TnC,
+		_1T1C,
+	};
+
+	enum ReadOutMode {
+		ndro,
+		qndro,
+		dro
 	};
 }
 enum CellAccessType

@@ -416,6 +416,9 @@ void TileCalculatePerformance(const vector<vector<double> > &newMemory, const ve
 				// also need to redefine a few data-grab start-point
 				for (int i=0; i<ceil((double)weightMatrixRow/(double)peSize); i++) {
 					for (int j=0; j<ceil((double)weightMatrixCol/(double)peSize); j++) {
+						
+						//bool firstProcessingUnit = (i == 0 && j == 0 && firstTile);
+						
 						if ( (i*peSize < weightMatrixRow) && (j*peSize < weightMatrixCol) ) {
 							int numRowMatrix = min(peSize, (double) weightMatrixRow-i*peSize);
 							int numColMatrix = min(peSize, (double) weightMatrixCol-j*peSize);
