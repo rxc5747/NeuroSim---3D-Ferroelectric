@@ -77,14 +77,12 @@ public:
 	Technology& tech;
 	MemCell& cell;
 
-	/* Functions */
 	void PrintProperty();
 	void Initialize(int _numRow, int _numCol, double _unitWireRes);
 	void CalculateArea();
 	void CalculateLatency(double _rampInput, const vector<double> &columnResistance, bool CalculateclkFreq, bool writeBack = false);
 	void CalculatePower(const vector<double> &columnResistance, bool writeBack = false);
 
-	/* Properties */	
 	bool initialized;	   // Initialization flag
 	int numRow;			   // Number of rows
 	int numCol;			   // Number of columns
@@ -140,13 +138,11 @@ public:
 	double capPL;
 	double capBL;
 
-		/* ---- sense tier: core array + column sense amplifier, no row drivers ---- */
 	double senseLatencyCore;      // one sense event, worst column
 	double senseEnergyCore;       // all numCol columns, one access
 	double readLatencySense;      // = readLatencyCore + senseLatencyCore
 	double readEnergySense;       // = readEnergyCore  + senseEnergyCore
 
-	// 3D floorplan breakdown (set by CalculateArea)
 	double areaStaircase, areaViaRouting, areaMemoryDie, areaLogicDie, areaBondPad, chipFootprint;
 
 	double activityRowWrite;	// Activity for # of rows in the write
