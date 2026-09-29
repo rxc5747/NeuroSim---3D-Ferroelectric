@@ -288,17 +288,24 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
         	double areaMetal = areaUnitCell - areaHole;  //Area of Metal Plane = (Pitch^2) - (Area of Hole)
         	double epsilonOxide = 3.9 * 8.85e-12;
         	double capCouplingPerCell = epsilonOxide * areaMetal / distWBL;
-        	double capParasiticWBL = 2 * capCouplingPerCell * numCol; // Multiply by 2 because it couples to BOTH the layer above and below
+        	double capParasiticWBL = 2 * capCouplingPerCell * numCol * numRow; // Multiply by 2 because it couples to BOTH the layer above and below
 										   // capParasiticWBL is the single cell capacitance, so we multiply it with numCol * numRow
 
-		// Cell Capacitance (FeCAP)
-        	double epsilonFE = 25 * 8.85e-12;
+		double epsilonFE = 25 * 8.85e-12;
         	double capCell3D = (2 * 3.14159 * epsilonFE * tWBL) / log((rString + tFE) / rString);
+		double nStack   = (double)bitsPerCell;                               // planes per pillar
+        	double capSer   = (nStack > 1.0)
+        	                ? capCell3D * ((nStack - 1.0) * capCell3D + gateCap)
+        	                            / ( nStack        * capCell3D + gateCap)
+        	                : capCell3D;
+										   
+										   // Cell Capacitance (FeCAP)
         	double nSer = (bitsPerCell > 1)
 	        	    ? ((double)bitsPerCell - 1.0) / (double)bitsPerCell : 1.0;
 		///double capWBLTotal = capParasiticWBL + (capCell3D * nSer * numRow * numCol);
-		double capWBLTotal = capParasiticWBL + (capCell3D * numCol);
+		//double capWBLTotal = capParasiticWBL + (capCell3D * numCol);
 
+		double capWBLTotal = capParasiticWBL + (capSer * numCol * numRow);
 
                 //double resRowWBL = resPerCellWBL * numCol;
 
@@ -324,8 +331,21 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
         	double r_inner = rString;
         	double r_outer = rString + tFE;
         	double capCouplingPerPillar = (2 * 3.14159 * epsilonOxide * h_coupling) / log(r_outer / r_inner);
-        	//double totalCapCrossWBL = (2 * capCouplingPerPillar) * numRow * numCol;
-		double totalCapCrossWBL = (2 * capCouplingPerPillar) * numCol;
+        	double totalCapCrossWBL = (2 * capCouplingPerPillar) * numRow * numCol;
+		//double totalCapCrossWBL = (2 * capCouplingPerPillar) * numCol;
+
+
+        	double lenStair  = (double)bitsPerCell * param->staircaseStepPitch;
+        	double densStair = 2.0 * epsilonOxide / distWBL;      // F/m^2, both neighbours 
+        	double capStair  = lenStair * lengthRow * densStair;
+
+        	double sides     = 2.0;                               // staircase on 2 edges 
+        	double sqArray   = lengthCol / lengthRow;             // squares across the array 
+        	double sqStair   = lenStair  / lengthRow;             // squares along the tail   
+
+        	capWBL = capWBLTotal + totalCapCrossWBL + capStair;
+        	resWBL = param->plateSheetRes * (sqArray + sqStair) / sides;
+
 
         	// Summing total crossing cap for general line usage
         	double totalCrossingCapPerCol = totalCapCrossRBL + totalCapCrossRSL + totalCapCrossWBL;
@@ -341,16 +361,20 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
         	capSSL = lengthCol * 0.2e-15/1e-6 + (sourceCap * numRow);
 
         	// WBL (Plates)
-        	// WBL (Plates) -- parasitic is to the plates ABOVE and BELOW, an AREA term,
-		// not a line's wire capacitance.
 		double capPlateToPlate = 2.0 * epsilonOxide * (lengthRow * lengthCol) / distWBL;
 		//capWBL   = capPlateToPlate + capWBLTotal + totalCapCrossWBL;
-		//resWBL   = param->plateSheetRes;     /* ~1 square, edge-driven sheet */
-		resWBL   = resRow;     /* a strip along a row IS a line */
-		capWBL = lengthRow * 0.2e-15/1e-6 + (capWBLTotal + totalCapCrossWBL);
+		//resWBL   = param->plateSheetRes;     
+		//resWBL   = resRow;     
+		//capWBL = lengthRow * 0.2e-15/1e-6 + (capWBLTotal + totalCapCrossWBL);
+
+		capWBL = capWBLTotal + totalCapCrossWBL;
+
+		double plateSquares = (double)numRow / (double)numCol;
+        	resWBL = param->plateSheetRes * plateSquares
+        	       / (param->plateContactSides > 0 ? param->plateContactSides : 1.0);
 
         	capWBLwire = lengthRow * 0.2e-15/1e-6;
-		capWBLpar  = capWBLwire + capParasiticWBL + totalCapCrossWBL;   /* capWBL minus numCol*capCell3D */
+		capWBLpar  = capWBLwire + capParasiticWBL + totalCapCrossWBL;   // capWBL minus numCol*capCell3D 
 
 		// RSL (Top Select)
         	double wireCapCol = lengthCol * 0.2e-15/1e-6;
@@ -1012,7 +1036,6 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 
 					// 3. Extract Transistor parameters for physics equations
 
-                                        //Add custom values, tech is not the same
                                         //double muCox = tech.mobility * tech.cox;
                                         double muCox = 150e-6;
                                         double w_l = cell.widthAccessCMOS;
@@ -1051,7 +1074,6 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
  
                                           // 3. Extract Transistor parameters for physics equations
  
-                                          //Add custom values, tech is not the same
                                           //double muCox = tech.mobility * tech.cox;
                                           double muCox = 150e-6;
                                           double w_l = cell.widthAccessCMOS;
@@ -1111,11 +1133,6 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
                         rblSwitchMatrix.Initialize(ROW_MODE, numRow, resTg, true, false, activityRowRead, activityColWrite, numWriteCellPerOperationMemory, numWriteCellPerOperationNeuro, 1, clkFreq);
 
                         //WBL: Write Bitline (ROW MODE)
-                        // A WBL is selected by (pillar row, plane). Decode those as TWO
-                        // parallel decoders, not one flat one: ceil(log2(numRow*n)) = 15 bits
-                        // builds numNor = 2^15 = 32768 NOR gates (RowDecoder.cpp:79) and gives
-                        // each NAND2 a fanout of numNor/4 = 8192 (RowDecoder.cpp:365) -- that
-                        // single load is the 63.5 ns. Split -> 512 + 64 NOR, fanout 128 and 16.
                         wblDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(numRow)), false, false);
                         wblPlaneDecoder.Initialize(REGULAR_ROW, (int)ceil(log2(bitsPerCell)), false, false);
 
@@ -1364,14 +1381,6 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 	} 
 	initialized = true;  //finish initialization
 
-		/* -------------------------------------------------------------------
-	 * 2T-nC differential sense report.
-	 *     dV = Qsw/C_node = 2Pr*tFE/(eps0*epsFE*n)      (area cancels)
-	 *     n_max = 2Pr*tFE/(eps0*epsFE*senseAmpResolution)
-	 * At 2Pr = 0.40 C/m^2, tFE = 10 nm, epsFE = 30 and a 25 mV
-	 * offset-cancelled amplifier this is n_max = 602, so n = 8..256 is
-	 * comfortably inside. The AMPLIFIER is the design lever, not n.
-	 * ----------------------------------------------------------------- */
 	if (cell.memCellType == Type::_2TnC) {
 	    double capFeChk   = EPS0_VACUUM * param->epsFE * param->cellAreaFE / param->tFE;
 	    double capGateChk = capFeChk / param->capGateRatio;
@@ -1385,7 +1394,7 @@ void SubArray::Initialize(int _numRow, int _numCol, double _unitWireRes){  //ini
 	         << "  (amp resolves " << param->senseAmpResolution*1e3
 	         << " mV, n_max=" << nMaxChk << ")" << endl;
 	    if (dVsenseChk < param->senseAmpResolution)
-	        cout << "*** differential signal below the amplifier's resolution."
+	        cout << " Differential signal below the amplifier's resolution."
 	             << " Raise 2Pr or tFE, or use a lower-offset sense amp." << endl;
 	}
 }
@@ -1589,7 +1598,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
                 areaArray = heightArray * widthArray;
 
                 //Peripheral Circuits (Assumed similar to FeFET/DRAM)
-                // We need a Switch Matrix for WL (Rows) and SL/BL (Cols)
                //  wblDecoder.CalculateArea(heightArray, NULL, NONE);
                //  wblSwitchMatrix.CalculateArea(heightArray, NULL, NONE);
 
@@ -1672,13 +1680,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 		
 				double rowDriverHeight = height - ((numColMuxed > 1) ? muxDecoder.height : 0);
 
-		/* MIN_BLK.  The row-direction blocks are laid out against the array
-		 * height.  Below about 16 rows that height is smaller than one
-		 * peripheral cell row, CalculateArea divides by it and returns a
-		 * negative width, and the 8x8x8 macro comes out at -6.45e9 um^2
-		 * (four decoders at -9.8e8 and two switch matrices at -1.27e9).
-		 * Clamp to the smallest strip a folded decoder can physically
-		 * occupy: one transistor row per address bit. */
 		{
 			double minBlk = MAX(ceil(log2((double)numRow)), 1.0)
 			              * tech.featureSize * MAX_TRANSISTOR_HEIGHT;
@@ -1751,10 +1752,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
                 areaAccum = ((numReadPulse > 1) ? shiftAddInput.area : 0) + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0) + ((numAdd > 1) ? (adder.area + dff.area) : 0);
                 areaOther = usedArea - areaArray - areaADC - areaAccum;
 
-//				///* ---- 3D staircase ------------------------------------------------
-//		 * Plane contacts step out past the array on BOTH width edges; each
-//		 * strip spans the full column edge (heightArray). No die stacking,
-//		 * no bond pads, no under-array placement — geometry only.          */
 //		{
 //			int    nLayers3D     = (int)param->bitsPerCell;   // stacked WBL planes
 //			double staircaseStep = 400e-9;                    // landing pitch per plane [ASSUMPTION]
@@ -1767,26 +1764,15 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 //			width    += 2.0 * depthPerSide;
 //			area      = height * width;
 		{
-						/* ---- 3D staircase -------------------------------------------------
-			 * Plane contacts step out past the array on BOTH width edges.
-			 *
-			 * The landing pads are laid out as a 2-D array (nx across the strip
-			 * depth, ny along the strip) rather than a single 1-D flight of
-			 * steps.  A 1-D staircase makes the depth LINEAR in n: at n = 512
-			 * that is 256 * 400 nm = 102 um of dead silicon per side against a
-			 * 31 um array.  A 2-D pad field makes it sqrt(n), which is what
-			 * real stacked parts do.                                          */
 			int    nLayers3D     = (int)param->bitsPerCell;
-			double staircaseStep = param->staircaseStep;      /* was 400e-9 local */
-			double padPitch      = param->staircasePadPitch;  /* along the strip  */
+			double staircaseStep = param->staircaseStep;      // was 400e-9 local 
+			double padPitch      = param->staircasePadPitch;  // along the strip  
 
 			int    perSide = (int)ceil(nLayers3D / 2.0);
-			int    nx      = (int)ceil(sqrt((double)perSide));   /* steps in depth */
-			int    ny      = (int)ceil((double)perSide / nx);    /* rows of pads   */
+			int    nx      = (int)ceil(sqrt((double)perSide));   // steps in depth 
+			int    ny      = (int)ceil((double)perSide / nx);    // rows of pads   
 
 			double depthPerSide = nx * staircaseStep;
-			/* the strip only has to be as long as the pad rows need, capped at
-			 * the array edge it is attached to */
 			//double stripSpan    = MIN(heightArray, ny * padPitch);
 			double stripSpan = MIN(MIN(heightArray, widthArray), ny * padPitch);
 
@@ -1802,15 +1788,12 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 	//	{
 	//	int nLayers3D = (int)param->bitsPerCell;   // stacked WBL planes
 
- 	//       /* ---- 1. Staircase: planes extend past the array on BOTH width
- 	//        *         edges; strip spans the full column edge (heightArray). ---- */
  	//       StaircaseResult stair = CalculateDoubleSidedStaircase(nLayers3D, heightArray);
  	//       areaStaircase  = stair.staircaseArea;
 	//       areaCore = areaArray + areaStaircase;
  	//       areaViaRouting = stair.viaRoutingArea;
  	//       areaBondPad    = 0.0;
 
- 	//       /* ---- 2. Split the periphery into the two placement groups -------- */
 
  	//       // READOUT GROUP -> placed directly UNDER THE ARRAY.
  	//       // Everything the RSL columns land on, plus the SSL data drivers
@@ -1822,18 +1805,10 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
  	//       	+ ((numReadPulse > 1)      ? shiftAddInput.area  : 0)
  	//       	+ ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0)
  	//       	+ ((numAdd > 1)            ? (adder.area + dff.area) : 0);
- 	//       // NOTE: per the readout decision (1-bit SA, no ADC), sarADC /
- 	//       // multilevelSenseAmp / multilevelSAEncoder and the rsl* drivers should
- 	//       // leave this branch entirely. Until Initialize is updated, keep them
- 	//       // counted so area doesn't silently drop:
  	//       areaReadoutGroup += (param->SARADC ? sarADC.area
  	//                                          : (multilevelSenseAmp.area + multilevelSAEncoder.area));
  	//       areaReadoutGroup += rslSwitchMatrix.area + rslDecoder.area;   // to be removed
 
- 	//       // DRIVER GROUP -> placed UNDER THE STAIRCASE EXTENSIONS.
- 	//       // Row drivers (WWL/WPL/RBL), the WBL plate drivers + their decoders,
- 	//       // and the write-voltage level shifters: their contacts (staircase vias
- 	//       // and row-line edge vias) land in the staircase strips.
  	//       double areaDriverGroup =
  	//       	  wwlSwitchMatrix.area + wwlDecoder.area
  	//       	+ wplSwitchMatrix.area + wplDecoder.area
@@ -1841,7 +1816,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
  	//       	+ wblSwitchMatrix.area + wblDecoder.area
  	//       	+ ((cell.writeVoltage > 1.5) ? (wwlLevelShifter.area + wplLevelShifter.area + wblLevelShifter.area) : 0);
 
- 	//       // Active silicon bookkeeping (fixes the old SSL undercount too):
  	//       usedArea  = areaArray + areaReadoutGroup + areaDriverGroup;
  	//       areaADC   = currentSenseAmp.area
  	//                 + (param->SARADC ? sarADC.area : (multilevelSenseAmp.area + multilevelSAEncoder.area));
@@ -1850,11 +1824,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
  	//                 + ((numAdd > 1) ? (adder.area + dff.area) : 0);
  	//       areaOther = usedArea - areaArray - areaADC - areaAccum;
 
- 	//       /* ---- 3. Assemble per integration mode ----------------------------- */
  	//       if (param->integrationMode == CNA) {
- 	//       	// Single die, periphery beside the array (the planar height/width
- 	//       	// computed above stand); the staircase strips are appended as
- 	//       	// additional (dead) silicon on the two width edges.
  	//       	width        += 2.0 * stair.depthPerSide;
  	//       	area          = height * width;
  	//       	emptyArea     = area - usedArea;
@@ -1863,9 +1833,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
  	//       	chipFootprint = area;
 
  	//       } else {
- 	//       	// CUA / CBA: periphery moves beneath the array (same die or a
- 	//       	// bonded second die); placement rule: readout under array,
- 	//       	// drivers under staircase.
  	//       	StackedDieResult die = CalculateStackedDie(
  	//       		widthArray, heightArray, stair,
  	//       		areaReadoutGroup, areaDriverGroup, areaArray,
@@ -1881,28 +1848,10 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
  	//       	usedArea  = die.activeSilicon;
  	//       	emptyArea = die.deadArea;
 
- 	//       	// The wrapper tiles height x width; keep area == height * width
- 	//       	// with the memory die's edge as the anchor dimension.
- 	//       	//height = arrayDieAnchorHeight(heightArray);          // = heightArray
  	//       	height = heightArray;
 	//	width  = area / height;
 
- 	//       	// Diagnostics worth surfacing during bring-up:
- 	//       	// if (die.padLimited)         cout << "[Floorplan3D] CBA logic die is BOND-PAD limited" << endl;
- 	//       	// if (die.underArrayOverflow) cout << "[Floorplan3D] readout group exceeds under-array zone" << endl;
- 	//       	// if (die.underStairOverflow) cout << "[Floorplan3D] driver group exceeds under-staircase zone" << endl;
- 	//       	// cout << "[Floorplan3D] array efficiency = " << die.arrayEfficiency * 100 << " %" << endl;
 	//       }
-	//	// static bool floorplan3DPrinted = false;
-	//	// if (!floorplan3DPrinted) {
-	//	// 	floorplan3DPrinted = true;
-	//	// 	cout << "[3D] integration mode: "
-	//	// 	     << (param->integrationMode==CNA ? "CNA" : (param->integrationMode==CUA ? "CUA" : "CBA")) << endl;
-	//	// 	cout << "[3D] staircase / via routing: " << areaStaircase*1e12  << " / " << areaViaRouting*1e12 << " um^2" << endl;
-	//	// 	cout << "[3D] memory / logic die: "      << areaMemoryDie*1e12  << " / " << areaLogicDie*1e12   << " um^2" << endl;
-	//	// 	cout << "[3D] bond pad / chip: "         << areaBondPad*1e12    << " / " << chipFootprint*1e12  << " um^2" << endl;
-	//	// 	cout << "[3D] array efficiency: "        << (areaArray/chipFootprint)*100 << " %" << endl;
-	//	// }
 	       
 //}	
 
@@ -2121,7 +2070,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 			 areaAccum = ((numReadPulse > 1) ? shiftAddInput.area : 0) + ((numCellPerSynapse > 1) ? shiftAddWeight.area : 0) + ((numAdd > 1) ? (adder.area + dff.area) : 0);
                		 areaOther = usedArea - areaArray - areaADC - areaAccum;
 
-		 				 /* ---- 3D staircase (plate/BL planes) ---- */
 			 {
 				int    nLayers3D     = (int)param->bitsPerCell;
 				double staircaseStep = 400e-9;
@@ -2145,8 +2093,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 			// 	areaViaRouting = stair.viaRoutingArea;
 			// 	areaBondPad    = 0.0;
 
-			// 	// READOUT GROUP -> under the array (column-pitched circuits: sensing,
-			// 	// mux, accumulation, plus the PL column drivers used in the write path)
 			// 	double areaReadoutGroup =
 			// 		  currentSenseAmp.area
 			// 		+ ((numColMuxed > 1) ? (mux.area + muxDecoder.area) : 0)
@@ -2156,10 +2102,7 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 			// 		+ ((numAdd > 1)            ? (adder.area + dff.area) : 0)
 			// 		+ (param->SARADC ? sarADC.area
 			// 		                 : (multilevelSenseAmp.area + multilevelSAEncoder.area));
-			// 		// (SAR/MLSA to be removed once the 1-bit/nvCap readout lands)
 
-			// 	// DRIVER GROUP -> under the staircase strips (row gates + the n plate
-			// 	// drivers and their decoders + write-voltage level shifters)
 			// 	double areaDriverGroup =
 			// 		  wlSwitchMatrix.area + wlDecoder.area
 			// 		+ blSwitchMatrix.area + blDecoder.area
@@ -2198,16 +2141,6 @@ void SubArray::CalculateArea() {  //calculate layout area for total design
 			// 		height    = heightArray;
 			// 		width     = area / height;
 			// 	}
-			// 	// static bool floorplan3DPrinted = false;
-                	// 	// if (!floorplan3DPrinted) {
-                	// 	//         floorplan3DPrinted = true;
-                	// 	//         cout << "[3D] integration mode: "
-                	// 	//              << (param->integrationMode==CNA ? "CNA" : (param->integrationMode==CUA ? "CUA" : "CBA")) << endl;
-                	// 	//         cout << "[3D] staircase / via routing: " << areaStaircase*1e12  << " / " << areaViaRouting*1e12 << " um^2" << endl;
-                	// 	//         cout << "[3D] memory / logic die: "      << areaMemoryDie*1e12  << " / " << areaLogicDie*1e12   << " um^2" << endl;
-                	// 	//         cout << "[3D] bond pad / chip: "         << areaBondPad*1e12    << " / " << chipFootprint*1e12  << " um^2" << endl;
-                	// 	//         cout << "[3D] array efficiency: "        << (areaArray/chipFootprint)*100 << " %" << endl;
-                	// 	// }
 
 //}
 
@@ -3071,12 +3004,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				wplSwitchMatrix.CalculateLatency(1e20, capWPL, resRow, 1, 1);
 				
 				
-                               	/* A decoder drives the SWITCH MATRIX's select input, not the array line.
-				 * The switch matrix is the line driver. Handing the decoder the line
-				 * capacitance double-loads the path and makes decode time scale with the
-				 * array, which is not what a decoder does. One select input is a small
-				 * lumped gate load. */
-				double capDecOut = 4.0 * gateCap;      /* ~0.1 fF, one TG select input */
+				double capDecOut = 4.0 * gateCap;      // ~0.1 fF, one TG select input 
 
 				rslDecoder.CalculateLatency(1e20, capDecOut, NULL, 0, numRow, 1, 0);
 				rblDecoder.CalculateLatency(1e20, capDecOut, NULL, 0, numCol, 1, 0);
@@ -3104,7 +3032,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 					colDelay = param->chargeDelay;
         				readLatency += colDelay;
 
-					// --- QNDRO SELF-RESTORE PENALTY ---
+					// QNDRO SELF-RESTORE PENALTY 
 					if (cell.mem_rdo == Type::qndro) {
 
 	                                    if (writeBack) {
@@ -3126,9 +3054,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 	                                	    maxWriteDriverLatency = MAX(maxWriteDriverLatency, wplSwitchMatrix.writeLatency + wplDecoder.writeLatency);
 	
 	                                	    double writePulseTime = 10e-9;
-	                                	    				/* NLS kinetics: tau(E) = tau_inf * exp[(Ea/E)^alpha].
-							 * tau_inf = 236 ns is a HARD floor -- no field is faster.
-							 * The old 10 ns was 24x below it.                       [4] */
 							//double eWrField = (cell.writeVoltage / param->tFE) / 1e8;
 							//double writePulseTime = param->nlsTauInf
 							//        * exp(pow(param->nlsEa / eWrField, param->nlsAlpha));
@@ -3174,9 +3099,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 
 					    
 					    double writePulseTime = 10e-9;
-                                            /* NLS kinetics: tau(E) = tau_inf * exp[(Ea/E)^alpha].
-					    * tau_inf = 236 ns is a HARD floor -- no field is faster.
-				            * The old 10 ns was 24x below it.                       [4] */
 				        //     double eWrField = (cell.writeVoltage / param->tFE) / 1e8;
 				        //     double writePulseTime = param->nlsTauInf
 				        // 			* exp(pow(param->nlsEa / eWrField, param->nlsAlpha));
@@ -3222,10 +3144,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
         				readLatency += delay_setup;
 					lineSetupCore    = delay_setup;
 					// readLatencyCore  = colDelay + delay_setup + restoreLatencyCore;
-										/* Canonical core-tier restore latency: the write-back pulse,
-					 * amortised over the qndro refresh interval.  Overrides
-					 * whatever the qndro/dro blocks above set, so it is correct
-					 * whether or not writeBack was passed. */
 					{
 					    double restoreDutyL = 0.0;
 					    if      (cell.mem_rdo == Type::dro)   restoreDutyL = 1.0;
@@ -3235,8 +3153,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 					readLatencyCore  = colDelay + delay_setup + restoreLatencyCore;
 
 
-						/* sense tier: the column amplifier resolving the dumped charge.
-						 * numColMuxed = 1 and numRead = 1 -> ONE sense event for the whole row. */
 						currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
 						senseLatencyCore = currentSenseAmp.readLatency;
 						readLatencySense = readLatencyCore + senseLatencyCore;
@@ -3286,9 +3202,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 				//double writePulseTime = cell.writePulseWidth;
 				double writePulseTime = 10e-9;
 
-								/* NLS kinetics: tau(E) = tau_inf * exp[(Ea/E)^alpha].
-				 * tau_inf = 236 ns is a HARD floor -- no field is faster.
-				 * The old 10 ns was 24x below it.                       [4] */
 				//double eWrField = (cell.writeVoltage / param->tFE) / 1e8;
 				//double writePulseTime = param->nlsTauInf
 				//        * exp(pow(param->nlsEa / eWrField, param->nlsAlpha));
@@ -3343,11 +3256,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
     				if (numReadPulse > 1) 
 					shiftAddInput.CalculateLatency(ceil(numColMuxed/numCellPerSynapse));
 
-    				/* The array's own delay: charge transfer + line setup RC.  These
-    				 * are added to readLatency only in the CalculateclkFreq pass, so
-    				 * without this line the REPORTED read latency contains driver and
-    				 * sensing delay but no array at all -- which made the "full macro"
-    				 * figure come out smaller than the core-array figure. */
     				readLatencyOther = param->chargeDelay + lineSetupCore;
     				readLatency = readLatencyADC + readLatencyAccum + readLatencyOther;
 				// readLatency += restoreLatencyCore;   /* REVERTED: ProcessingUnit adds the
@@ -3442,7 +3350,7 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
                                         colDelay = param->chargeDelay;
                                         readLatency += colDelay;
 
-                                        // --- QNDRO SELF-RESTORE PENALTY ---
+                                        // QNDRO SELF-RESTORE PENALTY 
                                         if (cell.mem_rdo == Type::qndro) {
 
                                             if (writeBack) {
@@ -3463,9 +3371,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
                                                     maxWriteDriverLatency = MAX(maxWriteDriverLatency, plSwitchMatrix.writeLatency + plDecoder.writeLatency);
 
                                                     double writePulseTime = 10e-9;
-                                       			/* NLS kinetics: tau(E) = tau_inf * exp[(Ea/E)^alpha].
-							 * tau_inf = 236 ns is a HARD floor -- no field is faster.
-							 * The old 10 ns was 24x below it.                       [4] */
 							// double eWrField = (cell.writeVoltage / param->tFE) / 1e8;
 							// double writePulseTime = param->nlsTauInf
 							//         * exp(pow(param->nlsEa / eWrField, param->nlsAlpha));
@@ -3528,11 +3433,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
                                         }
 
 
-					/* Core-tier restore latency: the write-back pulse itself, amortised
-					 * over the qndro refresh interval.  Deliberately not gated on the
-					 * writeBack flag -- that flag only decides whether the FULL macro
-					 * pays the peripheral write-back.  restoreLatencyCore is read only
-					 * by mem_main, so this cannot affect a CIM number. */
 					{
 					    double restoreDutyL = 0.0;
 					    if      (cell.mem_rdo == Type::dro)   restoreDutyL = 1.0;
@@ -3540,10 +3440,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 					    restoreLatencyCore = restoreDutyL * 10e-9 * numRow * activityRowRead;
 					}
 
-					/* Setup delay: the slower of the BL and WL RC paths.  This whole
-					 * block used to sit inside "if (cell.mem_rdo == Type::ndro)", which
-					 * is why qndro and dro reported zero core latency and infinite read
-					 * bandwidth.  All three read-out modes charge the same two lines. */
 					double delay_BL    = 0.69 * resRow * capBL;
 					double delay_WL    = 0.69 * resRow * capWL;
 					double delay_setup = max(delay_BL, delay_WL);
@@ -3552,9 +3448,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 					lineSetupCore    = delay_setup;
 					readLatencyCore  = colDelay + delay_setup + restoreLatencyCore;
 
-					/* Sense tier.  numColMuxed = 1, numRead = 1 -> ONE sense event for
-					 * the whole row.  Missing entirely from the 1T-nC branch, which is
-					 * why eSenseAmp_pJ and tSenseAmp_ns came out 0. */
 					currentSenseAmp.CalculateLatency(columnResistance, 1, 1);
 					senseLatencyCore = currentSenseAmp.readLatency;
 					readLatencySense = readLatencyCore + senseLatencyCore;
@@ -3590,10 +3483,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
                         //Write Latency
                         if (!CalculateclkFreq) {
                                 double Trc = 185e-9;
-				/* The dro read-out penalty (Trc) is a READ-side cost.  It must not skip
-				 * the write-latency computation below, which is why writeLatency and
-				 * writeLatencyCore came out 0 for 1T-nC dro.  Trc is re-applied after
-				 * readLatency is assembled, at the bottom of this block. */
 				{
 
 				
@@ -3612,9 +3501,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
 
                                 //double writePulseTime = cell.writePulseWidth;
                                 double writePulseTime = 10e-9;
-				/* NLS kinetics: tau(E) = tau_inf * exp[(Ea/E)^alpha].
-				 * tau_inf = 236 ns is a HARD floor -- no field is faster.
-				 * The old 10 ns was 24x below it.                       [4] */
 			//	double eWrField = (cell.writeVoltage / param->tFE) / 1e8;
 			//	double writePulseTime = param->nlsTauInf
 			//	        * exp(pow(param->nlsEa / eWrField, param->nlsAlpha));
@@ -3674,8 +3560,6 @@ void SubArray::CalculateLatency(double columnRes, const vector<double> &columnRe
                                 if (numReadPulse > 1)
                                         shiftAddInput.CalculateLatency(ceil(numColMuxed/numCellPerSynapse));
 
-                                /* See the 2T-nC twin above: without readLatencyOther the
-                                 * reported read latency has no array term in it. */
                                 readLatencyOther = param->chargeDelay + lineSetupCore;
                                 readLatency = readLatencyADC + readLatencyAccum + readLatencyOther;
                                 if (cell.mem_rdo == Type::dro) readLatency += Trc;   /* destructive read-out penalty */
@@ -4789,33 +4673,8 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 						double iFlip_ON_W = 20e-6;
                         double tWrite = 10e-9;
 
-			/* ---------------------------------------------------------------
-			 * C_FE is GEOMETRY, not a constant: eps0*eps_r*A/t. At
-			 * A = 2*pi*r*h = 10053 nm^2 and t = 10 nm this is 0.267 fF. The
-			 * old hardcoded 0.5 fF was 1.87x too big and inflated every
-			 * dielectric and inhibition term.
-			 * ------------------------------------------------------------- */
                         double CapFe = EPS0_VACUUM * param->epsFE * param->cellAreaFE / param->tFE;
 
-			/* ---------------------------------------------------------------
-			 * SELF-BOOSTED BIAS + DIFFERENTIAL SENSE.
-			 *
-			 * "turning OFF the TW, applying a VR to the WBL, and then sensing
-			 *  TR current" -- the internal node Vint, between the capacitor and
-			 *  the read-transistor GATE, sets channel conductivity.       [3]
-			 *
-			 * All n capacitors on the pillar share that node. The UNSELECTED
-			 * plates are DRIVEN (not grounded) to vUnsel, so Vint sits at a
-			 * chosen operating point at ANY n, and the unselected capacitors
-			 * see ~0 V across them -- no read disturb. The selected cap's
-			 * switched charge is then a MODULATION about that point:
-			 *
-			 *     dVsense = Qsw/C_node = 2Pr*tFE/(eps0*epsFE*n)
-			 *
-			 * sensed against a reference column. The criterion is
-			 * dVsense > senseAmpResolution -- NOT Vint > Vth. No ferroelectric
-			 * memory is read single-ended against an absolute threshold.
-			 * ------------------------------------------------------------- */
 			double capGate = CapFe / param->capGateRatio;
 			double capNode = param->bitsPerCell * CapFe + capGate;
 			double QswRd   = param->twoPr * param->cellAreaFE;
@@ -4827,7 +4686,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			                : 0.0;
 			double dVsense  = QswRd / capNode;
 
-			/* the two sensed levels, about the bias point */
 			double iRead1 = MIN(param->ioffReadTr
 			                    * pow(10.0, (vIntBias + 0.5*dVsense - param->vthReadTr) / param->ssReadTr),
 			                    param->ionSatReadTr);
@@ -4835,7 +4693,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			                    * pow(10.0, (vIntBias - 0.5*dVsense - param->vthReadTr) / param->ssReadTr),
 			                    param->ionSatReadTr);
 
-			/* fraction of the page holding the switching state */
 			double p1Rd = param->dataOnesRead;
 
                         double eWritePerCell = 0;
@@ -4843,31 +4700,21 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			
 			if (cell.mem_rdo == Type::ndro) {
 				
-								/* ndro: V_read = 0.1 V applies no switching field, so the
-				 * capacitor releases only its linear charge. alphaRd = 0. */
 				double alphaRd = 0.0;
 				double V_RBL   = 0.5;
 				double tREAD   = 10e-9;
 
-				/* C*V^2 is NeuroSim's supply-draw convention for a switched
-				 * node -- use it for the cell too, so cell and line terms
-				 * are on the same footing. */
 				dielectric = CapFe * cell.readVoltage * cell.readVoltage;
 
-				/* plate driver moves the switched charge (none, here) */
 				e_WBL_ON  = alphaRd * QswRd * cell.readVoltage;
 				e_WBL_OFF = 0.0;
 
-				/* read transistor DC path -- DERIVED from the divider */
 				e_RBL_ON  = V_RBL * iRead1 * tREAD;
 				e_RBL_OFF = V_RBL * iRead0 * tREAD;
 
 				eReadOn  = e_WBL_ON  + e_RBL_ON  + dielectric;
 				eReadOff = e_WBL_OFF + e_RBL_OFF + dielectric;
 
-				/* THE ASSEMBLY. The two 0.5 literals WERE the hardcoded 50/50
-				 * assumption; p1Rd is what makes the read data-dependent.
-				 * p1Rd = 0.5 reproduces the old number exactly. */
 				ReadEnergyArray = ((p1Rd * eReadOn) + ((1.0 - p1Rd) * eReadOff))
 				                  * activityRowRead * numRow * numCol;
 				
@@ -4904,13 +4751,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			
 			} else if (cell.mem_rdo == Type::qndro) {
 
-								/* qndro: V_read = 1.2 V partially depolarises the ensemble --
-				 * "only a small fraction of the polarization is switched ...
-				 *  without fully disrupting the polarization".          [3]
-				 * MEASURE alphaRd from your own P-V loop at V_read: it is
-				 * dP(V_read)/2Pr. 0.20 is a placeholder -- until you have the
-				 * measurement, present the qndro read as a band over
-				 * alphaRd in [0.05, 0.30]. */
 				double alphaRd = 0.20;
 				double V_RBL   = 0.5;
 				double tREAD   = 10e-9;
@@ -4993,8 +4833,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 
 			} else if (cell.mem_rdo == Type::dro) {
 
-								/* dro: V_read = V_write, so the read fully reverses the
-				 * domain. alphaRd = 1 and every '1' must be restored. */
 				double alphaRd = 1.0;
 				double V_RBL   = 0.5;
 				double tREAD   = 10e-9;
@@ -5070,11 +4908,8 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 				double Qsw    = param->twoPr * param->cellAreaFE;
 				eWritePerCell = Qsw * cell.writeVoltage + 0.5 * CapFe * pow(cell.writeVoltage, 2);
                                 
-				// We must rewrite the entire subarray to refresh the states
-                                 // double totalCellFlippingEnergy = esWritePerCell * numCol * numRow * param->bitsPerCell;
 
                                 // 3. Total Refresh Energy
-                                // (Multiply peripheral energy by numRow because we write row-by-row)
                                 // double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
 //                                double writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell);
 
@@ -5089,22 +4924,11 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                 	//core read energy 
 			readSenseEnergyCore = ReadEnergyArray;
 
-				/* CalculatePower sums over EVERY entry of columnResistance, so
-				 * readDynamicEnergy is already the whole-row total. Do NOT scale by numCol. */
 				currentSenseAmp.CalculatePower(columnResistance, 1);
 				senseEnergyCore = currentSenseAmp.readDynamicEnergy;
 				// readEnergySense = readEnergyCore + senseEnergyCore;
 
 			
-						/* -----------------------------------------------------------------
-			 * A RESTORE IS A WRITE.  The write-back after a destructive read
-			 * moves the same 2Pr*A through the same cell, against the same V/3
-			 * half-select, as an ordinary write.  It must therefore use the same
-			 * two expressions as the write path below (lines ~4934 and ~4979).
-			 * The previous block here used the pre-patch V*I_flip*t form and
-			 * charged inhibition to the whole subarray, which made dro read
-			 * energy ~66x high and made it appear to scale with n.
-			 * --------------------------------------------------------------- */
 			double restoreDuty = 0.0;
 			if      (cell.mem_rdo == Type::dro)   restoreDuty = 1.0;
 			else if (cell.mem_rdo == Type::qndro) restoreDuty = 1.0 / param->qndroRefreshInterval;
@@ -5114,13 +4938,9 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			    
 			    double eCellR  = QswR * cell.writeVoltage
 			                   + CapFe * pow(cell.writeVoltage, 2);
-			    /* only the cells that WERE '1' were destroyed, so only they get
-			     * restored -- the restore is linear in p1, not a flat 0.5 */
 			    double switchR = eCellR * numWriteCellPerOperationNeuro
 			                     * numRow * activityRowWrite * param->dataOnesRead;
 
-			    /* V/2 self-boosted. V/3 was MEASURED TO FAIL on this cell:
-			     * "2Vw/3 disturb on unselected cells".                    [1] */
 			    double vInhR   = cell.writeVoltage / 2.0;
 			    double capFeHR = CapFe;
 			    
@@ -5140,11 +4960,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			}
 			readEnergyCore = readSenseEnergyCore + readRestoreEnergyCore;
 
-			/* Keep the tiers nested: whatever the core figure contains, the
-			 * full-macro array figure must contain too.  Without this,
-			 * readDynamicEnergyArray for qndro holds only the sense term while
-			 * readEnergyCore holds sense + restore, and your eRestorePeriph_pJ
-			 * column comes out NEGATIVE. */
 			// readDynamicEnergyArray += readRestoreEnergyCore;   /* REVERTED: same reason.
 			//     readDynamicEnergyArray feeds readDynamicEnergy, which ProcessingUnit
 			//     consumes.  The core/full tier bookkeeping is done in mem_main.cpp. */
@@ -5221,7 +5036,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			//  	double eReadOff = pReadOff * cell.readPulseWidth;
 			//  	
 			//  	// 2. QNDR Domain Flipping Energy
-			//  	// The FeCAP flips forward during the read pulse, and backward when WBL goes to 0V.
 			//  	double vRead_QNDR = cell.readVoltage;
 			//  	double iFlip = 20e-6; // 20 uA instantaneous switching current
 			//  	// double tFlip = 5e-9;  // 5ns switching time
@@ -5238,7 +5052,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			//  	double eRefresh = eWriteOne / readDisturb;
 			//  	
 			//  	// 3. Total Array Energy = DC Read Energy + Double Flipping Energy
-			//  	// Assuming 50% of cells are '0' and experience the QNDR flip
 			//  	double arrayDCReadEnergy = (0.5 * (eReadOn + eFlipTwice + eRefresh) * numActiveReadCells) +
 			//  	                           (0.5 * (eReadOff + eRefresh) * numActiveReadCells);
 			//  	
@@ -5312,9 +5125,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			double ArrayWriteEnergy = 0;
 
 			//eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
-			/* Charge-based cell switching. The old V*I_flip*t form moved 200 fC,
-			 * but 2Pr*A for this cell is 2.01 fC. iFlip_ON_W is a PEAK current for
-			 * driver sizing, not an energy parameter. */
 			double Qsw        = param->twoPr * param->cellAreaFE;          // add twoPr to Param (C/m^2, e.g. 0.20)
 			//eWritePerCell     = Qsw * cell.writeVoltage + 0.5 * CapFe * pow(cell.writeVoltage, 2);
 			eWritePerCell     = Qsw * cell.writeVoltage + CapFe * pow(cell.writeVoltage, 2);
@@ -5344,22 +5154,19 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
         		// double eFlipPerCell = vWrite * iFlip * tWritePulse;
 
         		// // 5. Total Array Cell Flipping Energy
-        		// // Multiply by the number of bits actually flipping in this operation
         		// double totalCellFlippingEnergy = eFlipPerCell * numWriteCellPerOperationNeuro;
 
 			
 			// Inhibition scheme (V/3 scheme is typical for cross-point-like sharing)
 			//double vInhibit = cell.writeVoltage / 3.0; 
 			
-						/* V/2 self-boosted inhibition. V/3 was measured to FAIL on this
-			 * cell -- 2Vw/3 disturb on the unselected cells.            [1] */
 			double vInhibit = cell.writeVoltage / 2.0;
-			{   /* V/2 is only safe if it stays below the coercive field */
+			{   
 			    double eInhField = (vInhibit / param->tFE) / 1e8;   /* MV/cm */
 			    static bool warnedInh2T = false;
 			    if (eInhField > param->ecFE && !warnedInh2T) {
 			        warnedInh2T = true;
-			        cout << "\n*** INHIBIT DISTURB (2T-nC): half-select field "
+			        cout << "\n INHIBIT DISTURB (2T-nC): half-select field "
 			             << eInhField << " MV/cm exceeds Ec = " << param->ecFE
 			             << " MV/cm.\n    Lower writeVoltage below "
 			             << 2*param->ecFE*param->tFE*1e8 << " V, or thicken tFE.\n\n";
@@ -5367,21 +5174,14 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			}
 
 
-			// Calculate the number of unselected capacitors sharing the active lines
-			// If we activate 1 row of WPLs and write to specific columns:
 			int numTotalCapacitors = param->numRowSubArrayPhysical * param->numColSubArray * (int)param->bitsPerCell;
 			//int numUnselectedCells = numTotalCapacitors - numWriteCellPerOperationNeuro;
 			
-			/* V/3 half-select: cells sharing the driven plane line, plus cells
-			 * sharing the driven row line. NOT the whole subarray.               */
 			int numUnselectedCells = param->numColSubArray * ((int)param->bitsPerCell - 1)
 			                       + param->numColSubArray * (param->numRowSubArrayPhysical - 1);
 
-			// Calculate the parasitic energy of charging all unselected FeCAPs to V/3
-			// Energy = 0.5 * C_unselected * V_inhibit^2 
-			// We use the linear dielectric capacitance (capFeOff) since domains don't fully flip
 			//double capFeH = 0.5e-15; 
-			double capFeH = CapFe;   /* derived, not 0.5e-15 */
+			double capFeH = CapFe;   
 			double inhibitionEnergy = 0.5 * capFeH * (vInhibit * vInhibit) * numUnselectedCells;
 			inhibitionEnergy *= (numWriteOperationPerRow * numRow * activityRowWrite);
 
@@ -5426,13 +5226,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 
                 	readDynamicEnergyOther = readDynamicEnergy - readDynamicEnergyADC - readDynamicEnergyAccum;
 
-			/* ---- block-level accounting (see BlockStats.h) ---------------------
-			 * One hook, at the end of the 2T-nC power branch.  ProcessingUnit
-			 * calls CalculateLatency() immediately before CalculatePower() on
-			 * this same object, so every .readLatency / .writeLatency read below
-			 * is current, and this only runs on the !CalculateclkFreq pass.
-			 * Energy sums reproduce the chip total exactly; latency sums are
-			 * total block-time, NOT the MAX-reduced critical path.            */
 			{
 			    BlockStats &B = BLK();
 			    B.enabled = true;
@@ -5455,7 +5248,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			    B.maxReadLatency  = BlockStats::mx(B.maxReadLatency,  readLatency);
 			    B.maxWriteLatency = BlockStats::mx(B.maxWriteLatency, writeLatency);
 			}
-			/* -------------------- end block-level accounting -------------------- */
 
 			// cout << "\n================ 2TnC Block Energy & Power ================" << endl;
         		// cout << "--- Read Dynamic Energy (J) ---" << endl;
@@ -5535,7 +5327,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                         double totalCellFlippingEnergy = 0;
 
                         //Calculate Operation Counts
-                        //How many times it loops to process a single logical row
                         double numReadCells = (int)ceil((double)numCol/numColMuxed);
                         int numWriteOperationPerRow = (int)ceil((double)numCol*activityColWrite/numWriteCellPerOperationNeuro);
 
@@ -5621,9 +5412,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			// // // int writeCyclesPerCell = 2; 
 			// double totalWriteActivations = numWriteOperationPerRow * numRow * activityRowWrite; // * writeCyclesPerCell;
 
-			// // ==========================================
 			// // DRIVER POWER
-			// // ==========================================
 			// 
                         //  // plDecoder.CalculatePower(numRow*activityRowRead*numColMuxed, numRow*activityRowWrite);
                         //  // plSwitchMatrix.CalculatePower(numColMuxed, 0, activityRowRead, activityColWrite);
@@ -5647,9 +5436,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			//   plSwitchMatrix.CalculatePower(totalReadActivations, totalWriteActivations, activityRowRead, activityColWrite);
 			
 			
-			// ==========================================
 			// PERIPHERALS (Mux, ADC, etc)
-			// ==========================================
 			if (numColMuxed > 1) {
 				mux.CalculatePower(numColMuxed);
 				muxDecoder.CalculatePower(numColMuxed, 1);
@@ -5663,9 +5450,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			}
 			
 			
-			// ==========================================
 			// ACCUMULATION LOGIC
-			// ==========================================
 			if (numCellPerSynapse > 1) {
 				shiftAddWeight.CalculatePower(numColMuxed);
 			}
@@ -5677,7 +5462,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 				dff.CalculatePower(numColMuxed*(numAdd-1), ceil(numCol/numColMuxed)*(log2(levelOutput) + ceil(log2(numAdd))/2), param->validated);
 			}
 			
-                        // Map 3D line parasitics to NeuroSim's calculated array parasitics
                         double resCellWL = resRow;
 
                         double resCellBL = resRow;
@@ -5700,7 +5484,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                         double tWrite = 10e-9;
                         //double CapFe = 0.5e-15;
 
-                        /* SubArray.cpp, 2T-nC and 1T-nC branches: replace  double CapFe = 0.5e-15;  */
 			double CapFe = EPS0_VACUUM * param->epsFE * param->cellAreaFE / param->tFE;
 			
 			double eWritePerCell = 0;
@@ -5732,15 +5515,12 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                                 //                  (0.5 * eReadOff * activityRowRead * numRow * numCol);
 				//
 
-								/* ndro: no switching field, only the linear charge. */
 				double alphaRd = 0.0;
 				double QswRd   = param->twoPr * param->cellAreaFE;
 				double p1Rd    = param->dataOnesRead;
 
                                 dielectric = CapFe * cell.readVoltage * cell.readVoltage;
 
-				/* 1T-nC: the charge lands on the BIT LINE, not a gate.
-				 * No read transistor, so no DC path term. */
 				e_BL_ON  = alphaRd * QswRd * cell.readVoltage;
 				e_BL_OFF = 0.0;
 
@@ -5775,7 +5555,7 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 				//  ReadEnergyArray = (0.5 * eReadOn * activityRowRead * numRow * numCol) +
                                 //                   (0.5 * eReadOff * activityRowRead * numRow * numCol);
 
-				double alphaRd = 0.20;   /* measure from your P-V loop  [3] */
+				double alphaRd = 0.20;   
 				double QswRd   = param->twoPr * param->cellAreaFE;
 				double p1Rd    = param->dataOnesRead;
 
@@ -5792,10 +5572,8 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 
                                 //if (writeBack) {
                                 //        // Calculate Single-Row Read-Out Energy
-                                //        // Parameters: (columnResistance, numColMuxed, numRead)
                                 //        currentSenseAmp.CalculatePower(columnResistance, 1);
 
-                                //        // Scale sensing energy for the entire subarray (row-by-row)
                                 //        senseEnergyTotal = currentSenseAmp.readDynamicEnergy * numRow * numCol * bitsPerCell;
 
                                 //        // 1. Peripheral Energy to drive all lines
@@ -5806,11 +5584,9 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                                 //        // 2. FeCap Flipping Energy
                                 //        eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
 
-                                //        // We must rewrite the entire subarray to refresh the states
                                 //         // double totalCellFlippingEnergy = eWritePerCell * numCol * numRow * param->bitsPerCell;
 
                                 //        // 3. Total Refresh Energy
-                                //        // (Multiply peripheral energy by numRow because we write row-by-row)
                                 //        // double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
                                 //        writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell) ;
 
@@ -5821,7 +5597,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                         } else if (cell.mem_rdo == Type::dro) {
 
                                 // // 1. WBL Energy: Driven by the input drivers (DACs/PWM)
-                                // // V_read is applied to the WBL of the target cells
 
                                 // double iFlip_ON = 20e-6; // 20 uA instantaneous switching current
                                 // double iFlip_OFF = 1.5e-6;
@@ -5858,8 +5633,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
         			// 1. Sense Energy: currentSenseAmp was initialized for numCol, so 1 activation senses the whole row.
         			// currentSenseAmp.CalculatePower(columnResistance, 1);
 
-        			// In standard DRO memory (DRAM/NVDRAM), the entire row is sensed into a row buffer,
-        			// and written back ALL AT ONCE when the row is closed.
         			double totalWriteBackOps = numRow * activityRowRead;
 
         			// double senseEnergyTotal = currentSenseAmp.readDynamicEnergy * totalWriteBackOps;
@@ -5870,13 +5643,11 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
         			double E_decoder_per_op = (blDecoder.readDynamicEnergy + wlDecoder.readDynamicEnergy) / totalReadOps;
         			double E_pl_decoder_per_op = plDecoder.readDynamicEnergy / 1.0; 
 
-        			// Switch matrices were activated numColMuxed times in the base read pass
         			double E_sw_per_op = (blSwitchMatrix.readDynamicEnergy + wlSwitchMatrix.readDynamicEnergy) / numColMuxed;
         			double E_pl_sw_per_op = plSwitchMatrix.readDynamicEnergy / 1.0;
 
         			double singleReadPeripheralEnergy = E_decoder_per_op + E_pl_decoder_per_op + E_sw_per_op + E_pl_sw_per_op;
 
-        			// Scale read peripheral energy to write voltage (E = 0.5 * C * V^2)
         			double voltageMultiplier = pow(cell.writeVoltage / cell.readVoltage, 2);
         			double singleWritePeripheralEnergy = singleReadPeripheralEnergy * voltageMultiplier;
 
@@ -5897,10 +5668,8 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 				
 				// // WriteBack
                                 // // Calculate Single-Row Read-Out Energy
-                                // // Parameters: (columnResistance, numColMuxed, numRead)
                                 // currentSenseAmp.CalculatePower(columnResistance, 1);
 
-                                // // Scale sensing energy for the entire subarray (row-by-row)
                                 // // senseEnergyTotal = currentSenseAmp.readDynamicEnergy * numRow * bitsPerCell;
                                 // senseEnergyTotal = currentSenseAmp.readDynamicEnergy * totalWriteBackOps;
 
@@ -5928,11 +5697,9 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 
 				// double writeBackEnergy = peripheralWriteEnergy + senseEnergyTotal + totalCellFlippingEnergy;
 
-                                // // We must rewrite the entire subarray to refresh the states
                                 //  // double totalCellFlippingEnergy = esWritePerCell * numCol * numRow * param->bitsPerCell;
 
                                 // // 3. Total Refresh Energy
-                                // // (Multiply peripheral energy by numRow because we write row-by-row)
                                 // // double writeBackEnergy = (peripheralWriteEnergy * numRow * param->bitsPerCell) + totalCellFlippingEnergy;
                                 // // writeBackEnergy = (peripheralWriteEnergy * numRow * bitsPerCell) + senseEnergyTotal + (eWritePerCell * numRow * bitsPerCell);
 
@@ -5942,22 +5709,11 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                         }
 
 
-			/* ================= CORE TIER (1T-nC) =================
-			 * The 1T-nC twin of the block in the 2T-nC branch.  Every line here
-			 * writes a *Core / sense* member that only mem_main reads, so none of
-			 * it can change a CIM result. */
 			readSenseEnergyCore = ReadEnergyArray;
 
-			/* CalculatePower sums over EVERY entry of columnResistance, so
-			 * readDynamicEnergy is already the whole-row total.  Do NOT scale by
-			 * numCol -- that was the 512x double count. */
 			currentSenseAmp.CalculatePower(columnResistance, 1);
 			senseEnergyCore = currentSenseAmp.readDynamicEnergy;
 
-			/* A RESTORE IS A WRITE: the write-back after a destructive read moves
-			 * the same 2Pr*A through the same cell against the same V/3 half-select
-			 * as an ordinary write, so it uses the same two expressions as the write
-			 * path further down this branch. */
 			double restoreDuty = 0.0;
 			if      (cell.mem_rdo == Type::dro)   restoreDuty = 1.0;
 			else if (cell.mem_rdo == Type::qndro) restoreDuty = 1.0 / param->qndroRefreshInterval;
@@ -5988,7 +5744,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 			    readRestoreEnergyCore = restoreDuty * (switchR + inhibR);
 			}
 			readEnergyCore = readSenseEnergyCore + readRestoreEnergyCore;
-			/* ===================================================== */
 
                         readDynamicEnergyArray += ReadEnergyArray;
 
@@ -6028,9 +5783,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 
                         eWritePerCell = (cell.writeVoltage * iFlip_ON_W * tWrite) + (0.5 * CapFe * pow(cell.writeVoltage,2));
                         
-			/* Charge-based cell switching. The old V*I_flip*t form moved 200 fC,
-			 * but 2Pr*A for this cell is 2.01 fC. iFlip_ON_W is a PEAK current for
-			 * driver sizing, not an energy parameter. */
 			double Qsw    = param->twoPr * param->cellAreaFE;
 			eWritePerCell = Qsw * cell.writeVoltage + 0.5 * CapFe * pow(cell.writeVoltage, 2);
 			
@@ -6040,7 +5792,6 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
 
 
 			//writeErase = 0.5 * numRow * numCol * 8 * (cell.writeVoltage * iFlip_ON * tWrite);
-
 
                         peripheralWriteEnergy = blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy +
                                        wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy +
@@ -6059,35 +5810,24 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
                         // double eFlipPerCell = vWrite * iFlip * tWritePulse;
 
                         // // 5. Total Array Cell Flipping Energy
-                        // // Multiply by the number of bits actually flipping in this operation
                         // double totalCellFlippingEnergy = eFlipPerCell * numWriteCellPerOperationNeuro;
 
 
-                        // Inhibition scheme (V/3 scheme is typical for cross-point-like sharing)
                         //double vInhibit = cell.writeVoltage / 3.0;
 
-			                        /* V/2 self-boosted. V/3 measured to FAIL on this cell. [1] */
                         double vInhibit = cell.writeVoltage / 2.0;
 			
-                        // Calculate the number of unselected capacitors sharing the active lines
-                        // If we activate 1 row of WPLs and write to specific columns:
                         int numTotalCapacitors = param->numRowSubArrayPhysical * param->numColSubArray * (int)param->bitsPerCell;
                         //int numUnselectedCells = numTotalCapacitors - numWriteCellPerOperationNeuro;
 
-			/* V/3 half-select: cells sharing the driven plane line, plus cells
- 			* sharing the driven row line. NOT the whole subarray.               */
 			int numUnselectedCells = param->numColSubArray * ((int)param->bitsPerCell - 1)
 			                       + param->numColSubArray * (param->numRowSubArrayPhysical - 1);
 
-                        // Calculate the parasitic energy of charging all unselected FeCAPs to V/3
-                        // Energy = 0.5 * C_unselected * V_inhibit^2
-                        // We use the linear dielectric capacitance (capFeOff) since domains don't fully flip
                         //double capFeH = 0.5e-15;
                                                 double capFeH = CapFe;   /* derived, not 0.5e-15 */
 			double inhibitionEnergy = 0.5 * capFeH * (vInhibit * vInhibit) * numUnselectedCells;
 			inhibitionEnergy *= (numWriteOperationPerRow * numRow * activityRowWrite);
 
-                        // Multiply by the number of write cycles (2 cycles for a parallel write scheme)
                         // writeCyclesPerCell = 2;
                         // inhibitionEnergy *= writeCyclesPerCell;
 
@@ -6269,15 +6009,9 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
         		// Selected Cell Capacitors: Physically charging the 5fF cells
         		double cellEnergyWrite = (numRow * activityRowWrite * numCol * activityColWrite) * 0.5 * 5e-15 * pow(cell.writeVoltage, 2);
 
-        		// INHIBITION ENERGY (Unselected Bitlines):
-        		// Unselected bitlines on the active row must be held/precharged to prevent write-disturb.
-        		// This causes capacitive AC toggling across the length of the unselected wires.
-        		// double blEnergyUnselected = (numCol * (1.0 - activityColWrite)) * 0.5 * capBL * pow(tech.vdd, 2);
 
         		writeDynamicEnergyArray = cellEnergyWrite;
 
-        		// B. Total Write Dynamic Energy Aggregation
-        		// Note: ADCs and Accumulation circuits are OFF during the standard write phase.
         		writeDynamicEnergy = writeDynamicEnergyArray
         		                   + wlDecoder.writeDynamicEnergy + wlSwitchMatrix.writeDynamicEnergy
         		                   + blDecoder.writeDynamicEnergy + blSwitchMatrix.writeDynamicEnergy
@@ -6306,11 +6040,8 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
         		// double tRefresh = 32e-3; // 32 ms retention time
 			double tRefresh = 20.48e-3; // 20.48 ms
 
-        		// Using your math: Distributed refresh interval per row (32ms / 512 = 0.0625ms)
         		double tRefreshPerRow = tRefresh / numRow; 
 
-        		// A refresh is a Destructive Read followed by a Write-Back.
-        		// We extract the base peripheral energy required to activate ONE row:
         		double E_decoder_per_row = 0;
         		if (totalWriteBackOps > 0) {
         		    E_decoder_per_row = (blDecoder.readDynamicEnergy + wlDecoder.readDynamicEnergy) / (totalWriteBackOps * numColMuxed);
@@ -6332,16 +6063,12 @@ void SubArray::CalculatePower(const vector<double> &columnResistance, bool write
         		// Power = Energy / Time 
         		double refreshPower = totalRefreshEnergyPerRow / tRefreshPerRow;
         		
-        		// Add this continuous background power bleed to the static leakage
         		leakage += refreshPower;
 
 			readDynamicEnergyADC = (param->SARADC ? sarADC.readDynamicEnergy : (multilevelSenseAmp.readDynamicEnergy + multilevelSAEncoder.readDynamicEnergy));
         		readDynamicEnergyAccum = ((numCellPerSynapse > 1) ? shiftAddWeight.readDynamicEnergy : 0) + ((numReadPulse > 1) ? shiftAddInput.readDynamicEnergy : 0);
         		readDynamicEnergyOther = readDynamicEnergy - readDynamicEnergyADC - readDynamicEnergyAccum;
 
-			// ====================================================================
-        		// DEBUGGING: 1T1C ENERGY DUMP
-        		// // ====================================================================
         		//     std::cout << "\n================ 1T1C DRAM ENERGY DEBUG =================\n";
         		//     std::cout << "--- 1. Array Dimensions & Physics ---\n";
         		//     std::cout << "numRow: " << numRow << "\n";
