@@ -193,7 +193,7 @@ public:
 	int    numRowActivated;         // word lines asserted per access (1 = memory)
 	double qndroRefreshInterval;    // N: qndro reads tolerated before a page rewrite
 
-	/* ---- sense tier: core array + column sense amplifier, no row drivers ---- */
+	// sense tier: core array + column sense amplifier, no row drivers 
 	double senseLatencyCore;      // one sense event, worst column
 	double senseEnergyCore;       // all numCol columns, one access
 	double readLatencySense;      // = readLatencyCore + senseLatencyCore
@@ -202,10 +202,11 @@ public:
 	double twoPr;          // remanent polarisation 2Pr, C/m^2
 	double cellAreaFE;     // ferroelectric capacitor electrode area, m^2
 
-		/* ---- ferroelectric material, from measurement, not guesses ---- */
+	// ferroelectric material 
 	double epsFE;              // relative permittivity of the HZO
 	double tFE;                // ferroelectric thickness (m)
-	/* ---- read transistor ---- */
+	
+	// read transistor 
 	double vthReadTr;          // threshold voltage of TR (V)
 	double ssReadTr;           // subthreshold swing (V/decade)
 	double ionSatReadTr;       // saturated ON current (A)
@@ -213,21 +214,14 @@ public:
 	double capGateRatio;       // C_MFM / C_gate design ratio
 	double senseMarginVolt;    // required |Vint - Vth| margin (V)
 
-	/* ---- NLS polarisation switching kinetics ----
-	 * tau(E) = nlsTauInf * exp[(nlsEa/E)^nlsAlpha],  E in MV/cm
-	 * Alessandri et al., IEEE EDL 2018, 8 nm Hf0.5Zr0.5O2            [4] */
 	double nlsTauInf;          // s      asymptotic switching time (HARD floor)
 	double nlsEa;              // MV/cm  activation field
 	double nlsAlpha;           // -      exponent
 	double ecFE;               // MV/cm  coercive field, for the disturb check
 
-	/* ---- read bias and sensing ---- */
 	double readOverdrive;      // Vint_bias = vthReadTr + this (V)
 	double senseAmpResolution; // differential input the sense amp resolves (V)
 
-	/* ---- data pattern ----
-	 * fraction of the accessed page holding the SWITCHING state.
-	 * 0.5 reproduces the old hardcoded 50/50; 0.0 and 1.0 are the bounds. */
 	double dataOnesRead;
 
 	double inhibitDivider;       // 2.0 = V/2 self-boosted, 3.0 = V/3
@@ -238,25 +232,39 @@ public:
 	double staircaseStep;
 	double staircasePadPitch;
 
-	int    inhibitPillarModel;   /* 0 = unselected pillars biased at Vw/2 (V/2 scheme)
-	                              * 1 = unselected pillars float (self-boost, pessimistic) */
-	bool   inhibitSupplyDraw;    /* true = C*V^2 (supply), false = 0.5*C*V^2 (stored) */
+	int    inhibitPillarModel;   // 0 = unselected pillars biased at Vw/2 (V/2 scheme)
+	                             // 1 = unselected pillars float (self-boost, pessimistic) 
+	bool   inhibitSupplyDraw;    // true = C*V^2 (supply), false = 0.5*C*V^2 (stored) 
 
-		/* ---- read-transistor bias and sense amplifier ---- */
-	bool   readOverdriveAuto;  /* true: bias = window - dV/2, set per run in rw_main */
-	double senseAmpVmin;       /* differential the LATCH needs at its own input (V) */
-	double capSenseInt;        /* dedicated integrating cap; 0 => integrate on capRBL */
+	// read-transistor bias and sense amplifier 
+	bool   readOverdriveAuto;     // true: bias = window - dV/2, set per run in rw_main 
+	double senseAmpVmin;          // differential the LATCH needs at its own input (V) 
+	double capSenseInt;           // dedicated integrating cap; 0 => integrate on capRBL 
 
-	int    senseMode;          /* 0 = clamped column, current-mode; 1 = column integrates */
-	double iClampBias;         /* clamp bias current (A): g_clamp = iClampBias/(n*kT/q) */
-	double capJunctionTr;      /* S/D capacitance one transistor adds to its line (F); 0 = NeuroSim planar model */
-	double capSenseAmpIn;      /* amplifier input capacitance added to the integrating node (F) */
-	double capSenseAmpOut;     /* load on the latch's regenerating node: output register + local wiring (F) */
-	double senseRefFraction;   /* fraction of (I1-I0) available as differential: 0.5 = mid-point reference */
-	double senseAmpRegenTime;  /* latch regeneration time (s); 0 = derive tau = C/gm from the technology */
-	bool   readDrivesUnselPlanes; /* true: the (n-1) unselected strips of the accessed row are driven to vUnsel per read */
-	double kLineRc;            /* driven-line settle criterion in units of R*C (1.0 distributed 90 %, 2.2 lumped) */
-	double rblResScale;        /* RBL resistance relative to the technology minimum wire (0.25 = 4x wider or double-ended) */
+	int    senseMode;             // 0 = clamped column, current-mode; 1 = column integrates 
+	double iClampBias;            // clamp bias current (A): g_clamp = iClampBias/(n*kT/q) 
+	double capJunctionTr;         // S/D capacitance one transistor adds to its line (F); 0 = NeuroSim planar model 
+	double capSenseAmpIn;         // amplifier input capacitance added to the integrating node (F) 
+	double capSenseAmpOut;        // load on the latch's regenerating node: output register + local wiring (F) 
+	double senseRefFraction;      // fraction of (I1-I0) available as differential: 0.5 = mid-point reference 
+	double senseAmpRegenTime;     // latch regeneration time (s); 0 = derive tau = C/gm from the technology
+	bool   readDrivesUnselPlanes; // true: the (n-1) unselected strips of the accessed row are driven to vUnsel per read 
+	double kLineRc;               // driven-line settle criterion in units of R*C (1.0 distributed 90 %, 2.2 lumped) 
+	double rblResScale;           // RBL resistance relative to the technology minimum wire (0.25 = 4x wider or double-ended) 
+
+	// vertical path: pillar RC and staircase via 
+	double rhoPillar;          // resistivity of the pillar (shared-node) conductor, ohm*m:
+	                           // W fill 1e-7, TiN-only ~1.5e-6, n+ poly-Si ~1e-5           
+	double pillarRadius;       // conducting core radius (m) -- SubArray.cpp rString = 40 nm  
+	double planePitch;         // vertical pitch of one plane (m) -- SubArray tWBL+distWBL = 60 nm 
+	double rhoVia;             // resistivity of the staircase via to a plate strip (ohm*m) 
+	double viaRadius;          // via radius (m) 
+
+	// plate driver model 
+	int    plateDriverSized;   // 0 = fixed resPlateDriver; 1 = tapered buffer chain sized to the strip 
+	double plateDriverFanout;  // stage effort of that chain 
+
+	double plateContactSides;
 
 };
 
