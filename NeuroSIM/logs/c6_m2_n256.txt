@@ -1,0 +1,75 @@
+
+======================================================================
+  1T-nC   read-out: qndro   n = 256   22 nm
+  MEMORY OPERATOR MODE - one word line per access, core array only
+======================================================================
+
+ORGANISATION
+----------------------------------------------------------------------
+  subarray                                 64 x 64
+  planes (n)                              256.0000  
+  rows asserted per access                  1.0000  (must be 1)
+  page width                               64.0000  bits
+  pages in subarray                     16384.0000  
+  capacity                                  0.1250  MB
+
+AREA
+----------------------------------------------------------------------
+  array                                    58.9824  um^2
+  staircase contacts                      786.4320  um^2
+  CORE TOTAL                              845.4144  um^2
+  per Mbit                                845.4144  um^2/Mbit
+  bit density                               1.2403  Gb/mm^2
+
+LATENCY, CORE ONLY
+----------------------------------------------------------------------
+  charge transfer                           5.0000  ns
+  line setup RC                             0.0017  ns
+  restore                                   0.1000  ns
+  READ  core                                5.1017  ns
+  WRITE core                               10.0000  ns
+  read  bandwidth                          12.5448  Gb/s
+  write bandwidth                           6.4000  Gb/s
+
+LATENCY, WITH PERIPHERY (reference)
+----------------------------------------------------------------------
+  READ  total                               6.3109  ns
+  WRITE total                              11.0619  ns
+
+ENERGY, CORE ONLY
+----------------------------------------------------------------------
+  read  sense                               0.9062  pJ
+  read  restore                             0.0242  pJ
+  write cells                               0.1607  pJ
+  write inhibition                          2.2613  pJ
+  READ  per access                          0.9305  pJ
+  WRITE per access                          2.4220  pJ
+  read  per bit                            14.5384  fJ/bit
+  write per bit                            37.8440  fJ/bit
+
+READ ENERGY — WHAT EACH NUMBER CONTAINS
+----------------------------------------------------------------------
+  core array (cells + lines)                0.9305  pJ
+  + restore periphery                      -0.0242  pJ
+  = array + restore                         0.9062  pJ
+  Restore periphery = the WBL/WWL/WPL/SSL decoder and switch-matrix
+  energy of the write-back that a DESTRUCTIVE read triggers. It is zero
+  for ndro, which performs no restore, so for ndro the two rows above are
+  equal by construction. Neither figure includes the row drivers, level
+  shifters, sense amplifier, mux or ADC of a normal read.
+
+LATENCY, SENSE TIER  (core array + column sense amp, no row drivers)
+----------------------------------------------------------------------
+  core array                                5.1017  ns
+  sense amplifier                           1.0000  ns
+  READ core+sense                           6.1017  ns
+
+ENERGY, SENSE TIER
+----------------------------------------------------------------------
+  core array                                0.9305  pJ
+  sense amplifier                           0.1532  pJ
+  READ core+sense                           1.0836  pJ
+  per bit                                  16.9315  fJ/bit
+
+  STATUS: ok
+

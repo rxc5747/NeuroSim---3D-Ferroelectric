@@ -120,7 +120,7 @@ def main():
     if args.num_batches == -1:
         args.num_batches = len(data_loader_test)
 
-    args.sub_array = [4096, 64]
+    args.sub_array = [32768, 512]
 
     # Create layer_record directory and NetWork.csv
     hook.make_records(args)

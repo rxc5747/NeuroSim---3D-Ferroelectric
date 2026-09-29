@@ -5,10 +5,8 @@ import sys
 import signal
 import time
 
-# --- CONFIGURATION ---
 model_name = "resnet18"
-n_values = [4, 8, 16, 32, 64]
-# ---------------------
+n_values = [64, 256]
 
 def modify_file(filepath, pattern, replacement):
     """Utility to find and replace text in a file."""
@@ -22,9 +20,7 @@ def modify_file(filepath, pattern, replacement):
         f.write(new_content)
 
 for n in n_values:
-    print(f"==================================================")
     print(f"        STARTING PIPELINE FOR 1T{n}C              ")
-    print(f"==================================================")
     
     # 1. Calculate the physics bounds
     logical_rows = n * 512

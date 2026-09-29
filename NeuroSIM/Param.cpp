@@ -49,6 +49,7 @@
 #include <algorithm>
 #include "math.h"
 #include "Param.h"
+#include "typedef.h"
 #include "constant.h"
 
 using namespace std;
@@ -58,7 +59,7 @@ Param::Param() {
 	operationmode = 2;     		// 1: conventionalSequential (Use several multi-bit RRAM as one synapse)
 								// 2: conventionalParallel (Use several multi-bit RRAM as one synapse)
 
-	memcelltype = 6;        	// 1: cell.memCellType = Type::SRAM
+	memcelltype = 5;        	// 1: cell.memCellType = Type::SRAM
 								// 2: cell.memCellType = Type::RRAM
 								// 3: cell.memCellType = Type::FeFET
 								// 4: cell.memCellType = Type::nvCap
@@ -125,10 +126,178 @@ Param::Param() {
 								
 	synchronous = true;			// false: asynchronous
 								// true: synchronous, clkFreq will be decided by sensing delay
-								
+	
+	memoryMode           = false;
+	coreOnly             = false;
+	numRowActivated      = 1;
+	qndroRefreshInterval = 1e6;     // MUST MATCH ProcessingUnit.cpp 
+
+	// twoPr = 0.20;        // 20 uC/cm^2 — Adnaan et al. JXCDC 2025, Fig. 1(a)
+
+	epsFE         = 30.0;      // HZO relative permittivity
+	tFE           = 5e-9;     // ALD 10 nm HZO, vertical 2T-nC demo [1]
+	twoPr         = 0.40;      // 40 uC/cm^2, vertical cliff cell [1]
+	                           // (51.1 uC/cm^2 achievable, BEOL HZO/ZrO2 [2])
+	ecFE          = 1.2;       // coercive field MV/cm, HZO typical 1.0-1.5
+	/* NLS switching kinetics, 8 nm HZO                                    [4] */
+	nlsTauInf     = 236e-9;    // HARD floor -- no field switches faster
+	nlsEa         = 2.42;      // MV/cm
+	nlsAlpha      = 3.73;
+
+	vthReadTr     = 0.30;      // 22 nm LP NMOS
+	ssReadTr      = 0.064;     // 64 mV/dec, Intel 22 nm tri-gate NMOS [5]
+	ionSatReadTr  = 10e-6;     // >10 uA measured [3]
+	ioffReadTr    = 10e-9;
+	capGateRatio  = 3.0;       // C_MFM ~ 3x C_gate, QNRO design point [3]
+	senseMarginVolt = 0.05;    // 50 mV guard band either side of Vth
+
+	plateSheetRes = 12.5;
+
+	staircaseStep    = 400e-9;   /* lateral step per plane -- SET FROM YOUR PROCESS */
+	staircasePadPitch = 400e-9;  /* pad pitch along the strip */
+
+	/* The V/2 scheme REQUIRES unselected pillars to be held at Vw/2.  With them
+	 * floating, the half-select population grows by a factor of numRow and the
+	 * write costs ~14 pJ/bit at 256x256x256 -- three orders of magnitude past
+	 * the cell energy.  Model 0 is the design; model 1 is the bound. */
+	inhibitPillarModel = 0;
+	/* Match eLinearCell and eWriteLines: energy drawn FROM THE SUPPLY, not the
+	 * energy left on the capacitor. */
+	inhibitSupplyDraw  = true;
+	
+	/* Output resistance of the plate driver, seen by the pillar node during
+	 * charge transfer.  A SwitchMatrix pass gate at this node is a few kohm;
+	 * read resTg out of wblSwitchMatrix and put the real number here.      */
+	resPlateDriver = 5.0e3;
+	
+	/* ============ data pattern ============ */
+	dataOnesRead  = 0.5;       // 0.5 reproduces the old 50/50 assumption
+
+	// /* ============ read bias and sensing ============ */
+	// readOverdrive      = 0.00; // put the read transistor in conduction
+	// /* THIS is the number that sets how many planes a pillar can support:
+	//  *     n_max = 2Pr*tFE / (eps0*epsFE*senseAmpResolution)
+	//  * 25 mV (offset-cancelled [8]) -> n_max = 602
+	//  * 50 mV (plain differential)   -> n_max = 301
+	//  * State which amplifier you are assuming in the paper.               */
+	// senseAmpResolution = 0.025;
+	
+		/* ============ read bias and sensing ============ */
+	/* The usable gate window is ssReadTr*log10(ionSat/ioff) = 192 mV.
+	 *
+	 * readOverdrive = 0 puts the read transistor AT threshold, where it
+	 * conducts ioffReadTr = 10 nA.  That maximises the I1/I0 RATIO and pins
+	 * the ABSOLUTE current at the bottom of the device's range -- and sense
+	 * speed follows the absolute current.  Sensing then takes 207 ns at
+	 * n = 256 instead of 0.35 ns.
+	 *
+	 * With readOverdriveAuto, rw_main sets the bias per run to
+	 * (window - dV/2), so the '1' state lands at ionSat.  The value below is
+	 * only the fallback when readOverdriveAuto is false.                  */
+	readOverdriveAuto  = true;
+	readOverdrive      = 0.1375;
+
+	/* Design-rule floor applied to the PILLAR-node signal dVsense.        */
+	senseAmpResolution = 0.025;
+
+	/* Input-referred offset + noise + mismatch of the LATCH, at its own
+	 * input.  A property of the amplifier -- it does NOT change with rows,
+	 * cols or planes.  Distinct from senseAmpResolution: different node,
+	 * different quantity.                                                  */
+	senseAmpVmin       = 0.060;
+
+	/* ============ SENSE/LINE FIX (2026-09-25) -- sense model ============
+	 *
+	 * Topology (from the line names and the per-column CurrentSenseAmp the
+	 * SubArray instantiates): RBL is a ROW line and the read transistor's
+	 * DRAIN, biased at V_RBL for the sense window; RSL is a COLUMN line and
+	 * its SOURCE, one amplifier per column.  Every read transistor of the
+	 * accessed row conducts at once, so the ROW line carries the whole page
+	 * current (numCol * I) and the COLUMN line carries one cell's current.
+	 *
+	 * senseMode 0 (default) -- CLAMPED COLUMN, current-mode.  The amplifier
+	 *   holds the source line at a clamp level (virtual ground) and compares
+	 *   the cell current with a reference column.  This is the only sensing
+	 *   that works on a SOURCE line: if the source were allowed to rise while
+	 *   integrating, V_GS would fall with it and the '1' current would
+	 *   collapse ~exponentially (64 mV/dec) before 60 mV had developed.
+	 *     t_col  = 3 * (C_col/g_clamp + 0.5*R_col*C_col)      column settles to the clamp (95 %)
+	 *     t_dev  = capSenseInt * senseAmpVmin / (senseRefFraction * dI_eff)
+	 *     dI_eff : the far row's source sits I*R_col above the clamp, which
+	 *              degenerates it -- solved as a fixed point, worst-case row.
+	 * senseMode 1 -- COLUMN INTEGRATES (voltage-mode, "time to reach 60 mV on
+	 *   the line").  Only consistent if the column is the DRAIN and the source
+	 *   is on the row line at a fixed potential; then V_GS is constant and
+	 *     t_col  = 0.5*R_col*C_col                             far-row diffusion
+	 *     t_dev  = (C_col + capSenseAmpIn) * senseAmpVmin / (senseRefFraction * dI)
+	 *   but the row line is then the SOURCE of numCol conducting cells and its
+	 *   IR drop (numCol*I*R_row/2) raises the far cells' source -- rw_main
+	 *   emits that drop and flags it in both modes (rblDropRatio).
+	 * Both modes end with the latch regeneration
+	 *     t_regen = tau_latch * ln((Vdd/2)/senseAmpVmin),  tau_latch = C_node/gm
+	 * and both give a row term that is LINEAR in numRow through C_col.          */
+	senseMode          = 0;
+
+	/* integrating node of the current-mode amplifier (senseMode 0): the
+	 * mirror/compare node, a few fF.  Ignored in senseMode 1.                 */
+	capSenseInt        = 2.0e-15;
+
+	/* Bias current of the column clamp (a common-gate device with a pedestal
+	 * current so its transconductance does not collapse on a '0' column):
+	 * g_clamp = iClampBias/(n*kT/q), n from the subthreshold slope.  Default
+	 * = ionSatReadTr (10 uA -> 0.36 mS at 300 K).                             */
+	iClampBias         = 10e-6;
+
+	/* capJunctionTr: what ONE read/write transistor adds to the line it sits on.
+	 *   Vertical GAA device on a 40 nm-radius pillar, W_eff = 2*pi*r ~ 250 nm:
+	 *   junction area ~0.008 fF + contact sidewall/fringe ~0.04 fF + gate overlap
+	 *   ~0.02-0.05 fF  ->  0.05-0.10 fF.  CALIBRATE FROM TCAD.  0 = use NeuroSim's
+	 *   planar CalculateDrainCap(), which with widthAccessCMOS = 0 gave 0 and
+	 *   made every column line a bare wire (0.024 fF/cell).                    */
+	capJunctionTr      = 0.05e-15;
+	/* Input capacitance of the amplifier (two min-size input gates plus
+	 * wiring) on the column side.                                             */
+	capSenseAmpIn      = 0.3e-15;
+	/* What the latch's regenerating node drives: the output register's input
+	 * gate (~0.1 fF) plus a few um of local wiring (~0.2 fF/um).  A min-size
+	 * cross-coupled pair loaded only by itself would regenerate in ~3 ps,
+	 * which no real clocked comparator achieves; with this load tau_latch is
+	 * ~10-20 ps and t_regen 20-40 ps.  Override the whole term with
+	 * senseAmpRegenTime if you have a measured amplifier.                  */
+	capSenseAmpOut     = 2.0e-15;
+	/* The reference column carries (I1+I0)/2, so EITHER state develops only
+	 * (I1-I0)/2 against it.  1.0 reproduces the old, 2x optimistic form.      */
+	senseRefFraction   = 0.5;
+	/* 0 -> tau_latch derived from the technology (min-size cross-coupled pair);
+	 * >0 -> use this value (s) and skip the derivation.                       */
+	senseAmpRegenTime  = 0.0;
+	/* The pillar node is biased by driving ALL n plates of the accessed row
+	 * (n-1 to vUnsel, 1 to Vr); unselected rows keep their plates at 0 so their
+	 * read transistors stay off.  That drive costs (n-1)*capWBLwire*vUnsel^2
+	 * per read and was not counted.  false = assume the bias is held statically
+	 * (not viable on a floating node, kept for comparison only).              */
+	readDrivesUnselPlanes = true;
+	/* Driven-line settling criterion, as a multiple of the line's R*C.  These
+	 * are DISTRIBUTED lines: the far end reaches 90 % at ~1.0*RC (Sakurai /
+	 * Bakoglu).  2.2*RC is the lumped-RC 10-90 % figure the plate strip used
+	 * before 2026-09-25 while the settle terms used 0.69*RC -- two criteria in
+	 * one access time.  2.2 reproduces the old plate-strip numbers.          */
+	kLineRc            = 1.0;
+	/* The row line RBL carries the WHOLE page current (numCol * I_cell).  As
+	 * the technology's minimum 40 nm wire it is 600 ohm at 512 columns, and
+	 * 512 * 5 uA through it drops 0.78 V at the far end -- more than the V_DS
+	 * headroom.  A real macro makes RBL wide metal or drives it from both
+	 * ends.  This scales resRow for the RBL-only terms (its settle and the
+	 * page-current IR drop); 1.0 = minimum wire, 0.25 = 4x wider/double-ended. */
+	rblResScale        = 1.0;
+
 	/*** algorithm weight range, the default wrapper (based on WAGE) has fixed weight range of (-1, 1) ***/
 	algoWeightMax = 1;
 	algoWeightMin = -1;
+
+		inhibitDivider      = 2.0;   // V/2 self-boosted. V/3 measured to FAIL   [1]
+	qndroSwitchFraction = 0.20;  // MEASURE from your P-V loop at V_read:
+	                             // it is dP(V_read)/2Pr. Placeholder.       [3]
 	
 	/*** conventional hardware design options ***/
 	clkFreq = 1e9;                      // Clock frequency
@@ -211,20 +380,42 @@ Param::Param() {
 	outputtoggle = 0.5; // output bit toggling has a negligible portion of the interconnect energy. Set it to 50 % for simpliciity and generalizability for all neural network workloads.
 
 	if (memcelltype == 5 || memcelltype == 6) {
-		numRowSubArrayPhysical = 64;	    // Actual # of rows in single subArray
-        	bitsPerCell = 64;		    // # of capacitors ('n' in 2TnC)
+		numRowSubArrayPhysical = 512;	    // Actual # of rows in single subArray
+        	bitsPerCell = 16;		    // # of capacitors ('n' in 2TnC)
         	numRowSubArray = numRowSubArrayPhysical * bitsPerCell;		
 
-		numColSubArray = 64;		    // # of columns in single subArray
+		numColSubArray = 512;		    // # of columns in single subArray
+
+		//twoPr      = 0.20;                             // 20 uC/cm^2 — Adnaan et al., JXCDC 2025, Fig. 1(a)
+		cellAreaFE = 2.0 * 3.14159 * 45e-9 * 40e-9;    // 2*pi*r_s*t_WBL = 1.0053e-14 m^2
 
 	} else {
 		numRowSubArrayPhysical = 512;
-		//numRowSubArray = 4096;               // # of rows in single subArray
 		numRowSubArray = 512;               // # of rows in single subArray
         	numColSubArray = 512;               // # of columns in single subArray
 	}
 
+	// 3D floorplan: architecture + staircase 
+	integrationMode = CBA;       // CNA (0) default | CUA (1) | CBA (2)
+	staircaseStepWidth     = 200e-9;    // floor on the step run; via geometry may raise it
+	viaDiameter3D          = 80e-9;     // = 2 x 40 nm via radius used in Initialize()
+	viaOverlayMargin       = 20e-9;
+	viaSpacing3D           = 60e-9;
+	metalPitch3D           = 100e-9;
+	logicPackingEfficiency = 0.70;
+	bondPadPitch           = 500e-9;    // shrink as hybrid-bond process allows
 
+	staircaseStepPitch = 400e-9;            // per-plane contact step (NAND: ~0.3-1 um)
+	staircaseDummySteps = 2;                // trim/etch margin steps
+	staircaseBothSidesFullContact = true;   // every plane contacted both sides (plate RC/2)
+	staircaseEdgeMargin = 0.5e-6;           // slit + guard at strip end
+	tavPitch = 200e-9;                      // through-array via pitch (CUA)
+	cuaUtilization = 0.75;                  // routable fraction under array
+	cuaAreaDerate = 1.2;                    // thermal-budget CMOS penalty (CUA only)
+	cbaUtilization = 0.85;                  // logic-die placement utilization
+	
+	numBondPadPerSubarray = numColSubArray + numRowSubArrayPhysical + bitsPerCell + 64;
+	
 	// 230920 update
 
 	sync_data_transfer=0;
@@ -416,19 +607,31 @@ Param::Param() {
                 maxConductance = (double) 1/resistanceOn;
                 minConductance = (double) 1/resistanceOff;
                 accessVoltage = 1.2;                // Gate voltage for the transistor
-                chargeDelay = 5e-9;     		// Time to transfer charges to Cref
+                chargeDelay = 15e-9;     		// Time to transfer charges to Cref
 		writePulseWidth = 10e-9;
 
 		readDisturbFactor = 1e-6;   // 0.0001% shift per read
         	writeDisturbFactor = 1e-4;  // 0.01% shift per V/3 half-select
 
-		if (mem_rdo == 1) {
-			readVoltage = 0.1;
-		} else if (mem_rdo == 2) {
-			readVoltage = 1.2;
-		} else if (mem_rdo == 3) {
-			readVoltage = 2;
+		/* read voltage follows the read-out mode: the SELECTED capacitor must see
+		 * >= Ec for dro, 0.75*Ec for qndro, 0.25*Ec for ndro, on top of the pillar
+		 * bias. ecFE is MV/cm, tFE is m, so Ec*tFE [V] = ecFE*1e8*tFE.          */
+		{
+			double vCoercive = ecFE * 1e8 * tFE;
+			double vBiasNode = vthReadTr + readOverdrive;
+			if      (mem_rdo == 2) readVoltage = 0.75*vCoercive + vBiasNode;  /* qndro */
+			//else if (mem_rdo == 1) readVoltage = 0.25*vCoercive + vBiasNode;  /* ndro  */
+			else if (mem_rdo == 1) readVoltage = 0.75*vCoercive + vBiasNode;  /* ndro  */
+			else                   readVoltage = 0.75*vCoercive + vBiasNode;                /* dro   */
+			// else                   readVoltage = writeVoltage;                /* dro   */
 		}
+		// if (mem_rdo == 1) {
+		// 	readVoltage = 0.1;
+		// } else if (mem_rdo == 2) {
+		// 	readVoltage = 1.2;
+		// } else if (mem_rdo == 3) {
+		// 	readVoltage = 2;
+		// }
         }
 
 	if (memcelltype == 6) {         // for 1TnC array
@@ -440,17 +643,27 @@ Param::Param() {
     		    minConductance = (double) 1/resistanceOff;
     		    readVoltage = 1.0;                 // Read voltage needs to be high enough to switch polarization
     		    accessVoltage = 1.2;               // Gate voltage for the single transistor
-    		    chargeDelay = 5e-9;     		   // Time to dump charge onto BL
+    		    chargeDelay = 15e-9;     		   // Time to dump charge onto BL
     		    writePulseWidth = 10e-9;
 
 
-		    if (mem_rdo == 1) {
-                	        readVoltage = 0.1;
-                	} else if (mem_rdo == 2) {
-                	        readVoltage = 1.2;
-                	} else if (mem_rdo == 3) {
-                	        readVoltage = 2;
-                	}
+		/* read voltage follows the read-out mode: the SELECTED capacitor must see
+		 * >= Ec for dro, 0.75*Ec for qndro, 0.25*Ec for ndro, on top of the pillar
+		 * bias. ecFE is MV/cm, tFE is m, so Ec*tFE [V] = ecFE*1e8*tFE.          */
+		{
+			double vCoercive = ecFE * 1e8 * tFE;
+			double vBiasNode = vthReadTr + readOverdrive;
+			if      (mem_rdo == 2) readVoltage = 0.75*vCoercive + vBiasNode;  /* qndro */
+			else if (mem_rdo == 1) readVoltage = 0.25*vCoercive + vBiasNode;  /* ndro  */
+			else                   readVoltage = writeVoltage;                /* dro   */
+		}
+		//     if (mem_rdo == 1) {
+                // 	        readVoltage = 0.1;
+                // 	} else if (mem_rdo == 2) {
+                // 	        readVoltage = 1.2;
+                // 	} else if (mem_rdo == 3) {
+                // 	        readVoltage = 2;
+                // 	}
 
     	}
 	if (memcelltype == 7) {         // for 1T1C array
@@ -462,7 +675,7 @@ Param::Param() {
                     minConductance = (double) 1/resistanceOff;
                     readVoltage = 1.0;                 // Read voltage needs to be high enough to switch polarization
                     accessVoltage = 1.2;               // Gate voltage for the single transistor
-                    chargeDelay = 5e-9;                    // Time to dump charge onto BL
+                    chargeDelay = 15e-9;                    // Time to dump charge onto BL
                     writePulseWidth = 10e-9;
 
                     if (mem_rdo == 1) {

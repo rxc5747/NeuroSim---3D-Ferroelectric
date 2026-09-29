@@ -38,7 +38,7 @@
 
 .SECONDEXPANSION:
 
-MAINS := main.cpp
+MAINS := main.cpp mem_main.cpp rw_main.cpp
 ALLSRC := $(wildcard *.cpp)
 SRC := $(filter-out $(MAINS),$(ALLSRC))
 ALLOBJ := $(ALLSRC:.cpp=.o)

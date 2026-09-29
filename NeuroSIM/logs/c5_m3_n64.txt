@@ -1,0 +1,76 @@
+wtf THIS IS NOT CORRECT
+
+======================================================================
+  2T-nC   read-out: dro   n = 64   22 nm
+  MEMORY OPERATOR MODE - one word line per access, core array only
+======================================================================
+
+ORGANISATION
+----------------------------------------------------------------------
+  subarray                                 64 x 64
+  planes (n)                               64.0000  
+  rows asserted per access                  1.0000  (must be 1)
+  page width                               64.0000  bits
+  pages in subarray                      4096.0000  
+  capacity                                  0.0312  MB
+
+AREA
+----------------------------------------------------------------------
+  array                                    58.9824  um^2
+  staircase contacts                      196.6080  um^2
+  CORE TOTAL                              255.5904  um^2
+  per Mbit                               1022.3616  um^2/Mbit
+  bit density                               1.0256  Gb/mm^2
+
+LATENCY, CORE ONLY
+----------------------------------------------------------------------
+  charge transfer                           5.0000  ns
+  line setup RC                             0.0022  ns
+  restore                                  10.0000  ns
+  READ  core                               15.0022  ns
+  WRITE core                               10.0000  ns
+  read  bandwidth                           4.2660  Gb/s
+  write bandwidth                           6.4000  Gb/s
+
+LATENCY, WITH PERIPHERY (reference)
+----------------------------------------------------------------------
+  READ  total                              13.5264  ns
+  WRITE total                              17.9669  ns
+
+ENERGY, CORE ONLY
+----------------------------------------------------------------------
+  read  sense                               3.1376  pJ
+  read  restore                             1.0567  pJ
+  write cells                               0.1607  pJ
+  write inhibition                          0.8960  pJ
+  READ  per access                          4.1943  pJ
+  WRITE per access                          1.0567  pJ
+  read  per bit                            65.5356  fJ/bit
+  write per bit                            16.5106  fJ/bit
+
+READ ENERGY — WHAT EACH NUMBER CONTAINS
+----------------------------------------------------------------------
+  core array (cells + lines)                4.1943  pJ
+  + restore periphery                   36315.5934  pJ
+  = array + restore                     36319.7876  pJ
+  Restore periphery = the WBL/WWL/WPL/SSL decoder and switch-matrix
+  energy of the write-back that a DESTRUCTIVE read triggers. It is zero
+  for ndro, which performs no restore, so for ndro the two rows above are
+  equal by construction. Neither figure includes the row drivers, level
+  shifters, sense amplifier, mux or ADC of a normal read.
+
+LATENCY, SENSE TIER  (core array + column sense amp, no row drivers)
+----------------------------------------------------------------------
+  core array                               15.0022  ns
+  sense amplifier                           1.0000  ns
+  READ core+sense                          16.0022  ns
+
+ENERGY, SENSE TIER
+----------------------------------------------------------------------
+  core array                                4.1943  pJ
+  sense amplifier                           0.1827  pJ
+  READ core+sense                           4.3770  pJ
+  per bit                                  68.3908  fJ/bit
+
+  STATUS: ok
+

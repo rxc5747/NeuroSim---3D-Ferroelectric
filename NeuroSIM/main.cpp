@@ -165,8 +165,8 @@ int main(int argc, char * argv[]) {
     markNM = ChipDesignInitialize(inputParameter, tech, cell, false, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
     pipelineSpeedUp = ChipDesignInitialize(inputParameter, tech, cell, true, netStructure, &maxPESizeNM, &maxTileSizeCM, &numPENM);
     
-    // maxPESizeNM = 65536;
-    // maxTileSizeCM = 131072;
+    maxPESizeNM = 262144;
+    maxTileSizeCM = 524288;
     
 
     double desiredNumTileNM, desiredPESizeNM, desiredNumTileCM, desiredTileSizeCM, desiredPESizeCM;

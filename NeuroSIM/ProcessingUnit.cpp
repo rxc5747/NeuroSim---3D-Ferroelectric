@@ -395,7 +395,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 							// 2. Only track and trigger writebacks for 2T-nC devices
 							if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
 								if (cell.mem_rdo == Type::qndro) {
-							    		int WRITEBACKCYCLE = 100;
+							    		int WRITEBACKCYCLE = param->qndroRefreshInterval;
 
 							    		if ( ((k + 1) %  WRITEBACKCYCLE) == 0) {
                                                             		         writeBack = true;
@@ -513,7 +513,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 				// 2. Only track and trigger writebacks for 2T-nC devices
                                 if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
                                          if (cell.mem_rdo == Type::qndro) {         
-							int WRITEBACKCYCLE = 100;
+							int WRITEBACKCYCLE = param->qndroRefreshInterval;
 
                                 	         if ( ((k + 1) %  WRITEBACKCYCLE) == 0) {
                                 	                   writeBack = true;
@@ -597,7 +597,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 						// 2. Only track and trigger writebacks for 2T-nC devices
                                                if (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC) {
                                                                 if (cell.mem_rdo == Type::qndro) {
-                                               			         int WRITEBACKCYCLE = 100;
+                                               			         int WRITEBACKCYCLE = param->qndroRefreshInterval;
 
                                                			         if ( ((k + 1) %  WRITEBACKCYCLE) == 0) {
                                                			                   writeBack = true;
@@ -783,8 +783,17 @@ vector<double> GetInputVector(const vector<vector<double> > &input, int numInput
 	}
 
 	// 122923 update
-	double totalnumRow = param->numRowSubArray;
+	// double totalnumRow = param->numRowSubArray;
+	//double totalnumRow = (cell.memCellType == Type::_2TnC || cell.memCellType == Type::_1TnC)
+        //             ? (double)param->numRowSubArrayPhysical
+        //             : (double)param->numRowSubArray;
+	
+	double totalnumRow = (param->memcelltype == 5 || param->memcelltype == 6)
+	                   ? (double)param->numRowSubArrayPhysical
+	                   : (double)param->numRowSubArray;
+
 	*(activityRowRead) = numofreadrow/totalnumRow;
+	
 	return copy;
 	copy.clear();
 } 

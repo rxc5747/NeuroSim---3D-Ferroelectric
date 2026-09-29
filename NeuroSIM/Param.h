@@ -167,6 +167,97 @@ public:
 	double readDisturbFactor;
     	double writeDisturbFactor;
 
+	// 3D floorplan: architecture + staircase 
+	int    integrationMode;        // 0=CNA, 1=CUA, 2=CBA
+	double staircaseStepWidth;     // minimum stair-tread run                          [m]
+	double viaDiameter3D;          // plane/WL contact via diameter                    [m]
+	double viaOverlayMargin;       // landing-pad overlay margin per side              [m]
+	double viaSpacing3D;           // edge-to-edge keep-out between via pads           [m]
+	double metalPitch3D;           // BEOL metal pitch for per-layer routing           [m]
+	double logicPackingEfficiency; // logic-die fill factor (0-1)
+	double bondPadPitch;           // Cu-Cu hybrid-bond pad pitch (CBA)                [m]
+	int    numBondPadPerSubarray;  // die-to-die bond pads per subarray (CBA)
+
+	double staircaseStepPitch;
+	int    staircaseDummySteps;
+	bool   staircaseBothSidesFullContact;
+	double staircaseEdgeMargin;
+	double tavPitch;
+	double cuaUtilization;
+	double cuaAreaDerate;
+	double cbaUtilization;
+
+	// memory operator mode 
+	bool   memoryMode;              // true: pure memory macro, no CIM dataflow
+	bool   coreOnly;                // true: also accumulate core-array-only PPA
+	int    numRowActivated;         // word lines asserted per access (1 = memory)
+	double qndroRefreshInterval;    // N: qndro reads tolerated before a page rewrite
+
+	/* ---- sense tier: core array + column sense amplifier, no row drivers ---- */
+	double senseLatencyCore;      // one sense event, worst column
+	double senseEnergyCore;       // all numCol columns, one access
+	double readLatencySense;      // = readLatencyCore + senseLatencyCore
+	double readEnergySense;       // = readEnergyCore  + senseEnergyCore
+
+	double twoPr;          // remanent polarisation 2Pr, C/m^2
+	double cellAreaFE;     // ferroelectric capacitor electrode area, m^2
+
+		/* ---- ferroelectric material, from measurement, not guesses ---- */
+	double epsFE;              // relative permittivity of the HZO
+	double tFE;                // ferroelectric thickness (m)
+	/* ---- read transistor ---- */
+	double vthReadTr;          // threshold voltage of TR (V)
+	double ssReadTr;           // subthreshold swing (V/decade)
+	double ionSatReadTr;       // saturated ON current (A)
+	double ioffReadTr;         // OFF current (A)
+	double capGateRatio;       // C_MFM / C_gate design ratio
+	double senseMarginVolt;    // required |Vint - Vth| margin (V)
+
+	/* ---- NLS polarisation switching kinetics ----
+	 * tau(E) = nlsTauInf * exp[(nlsEa/E)^nlsAlpha],  E in MV/cm
+	 * Alessandri et al., IEEE EDL 2018, 8 nm Hf0.5Zr0.5O2            [4] */
+	double nlsTauInf;          // s      asymptotic switching time (HARD floor)
+	double nlsEa;              // MV/cm  activation field
+	double nlsAlpha;           // -      exponent
+	double ecFE;               // MV/cm  coercive field, for the disturb check
+
+	/* ---- read bias and sensing ---- */
+	double readOverdrive;      // Vint_bias = vthReadTr + this (V)
+	double senseAmpResolution; // differential input the sense amp resolves (V)
+
+	/* ---- data pattern ----
+	 * fraction of the accessed page holding the SWITCHING state.
+	 * 0.5 reproduces the old hardcoded 50/50; 0.0 and 1.0 are the bounds. */
+	double dataOnesRead;
+
+	double inhibitDivider;       // 2.0 = V/2 self-boosted, 3.0 = V/3
+	double qndroSwitchFraction;  // fraction of 2Pr switched by a QNDRO read
+	double plateSheetRes;   // ohm/square of the WBL plate metal
+
+	double resPlateDriver;
+	double staircaseStep;
+	double staircasePadPitch;
+
+	int    inhibitPillarModel;   /* 0 = unselected pillars biased at Vw/2 (V/2 scheme)
+	                              * 1 = unselected pillars float (self-boost, pessimistic) */
+	bool   inhibitSupplyDraw;    /* true = C*V^2 (supply), false = 0.5*C*V^2 (stored) */
+
+		/* ---- read-transistor bias and sense amplifier ---- */
+	bool   readOverdriveAuto;  /* true: bias = window - dV/2, set per run in rw_main */
+	double senseAmpVmin;       /* differential the LATCH needs at its own input (V) */
+	double capSenseInt;        /* dedicated integrating cap; 0 => integrate on capRBL */
+
+	int    senseMode;          /* 0 = clamped column, current-mode; 1 = column integrates */
+	double iClampBias;         /* clamp bias current (A): g_clamp = iClampBias/(n*kT/q) */
+	double capJunctionTr;      /* S/D capacitance one transistor adds to its line (F); 0 = NeuroSim planar model */
+	double capSenseAmpIn;      /* amplifier input capacitance added to the integrating node (F) */
+	double capSenseAmpOut;     /* load on the latch's regenerating node: output register + local wiring (F) */
+	double senseRefFraction;   /* fraction of (I1-I0) available as differential: 0.5 = mid-point reference */
+	double senseAmpRegenTime;  /* latch regeneration time (s); 0 = derive tau = C/gm from the technology */
+	bool   readDrivesUnselPlanes; /* true: the (n-1) unselected strips of the accessed row are driven to vUnsel per read */
+	double kLineRc;            /* driven-line settle criterion in units of R*C (1.0 distributed 90 %, 2.2 lumped) */
+	double rblResScale;        /* RBL resistance relative to the technology minimum wire (0.25 = 4x wider or double-ended) */
+
 };
 
 #endif

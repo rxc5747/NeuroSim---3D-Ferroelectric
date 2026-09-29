@@ -98,6 +98,19 @@ public:
 	double areaArray;
 	double readDynamicEnergyArray, writeDynamicEnergyArray;
 	double writeLatencyArray;
+
+	// core-array-only PPA (memory operator mode)
+	double readLatencyCore;          // chargeDelay + line setup + restore
+	double writeLatencyCore;         // write pulse only, no driver setup
+	double lineSetupCore;            // the 0.69*R*C term, broken out
+	double restoreLatencyCore;       // qndro/dro cell restore, no drivers
+	double readEnergyCore;           // = readSenseEnergyCore + readRestoreEnergyCore
+	double readSenseEnergyCore;      // cells + lines, every read
+	double readRestoreEnergyCore;    // amortised page rewrite, D * write core
+	double writeEnergyCore;          // = writeCellEnergyCore + inhibitionEnergyCore
+	double writeCellEnergyCore;      // ferroelectric switching alone
+	double inhibitionEnergyCore;     // V/3 half-select charging alone
+	double areaCore;                 // areaArray + areaStaircase
 	
 	double lengthRow;	// Length of rows, Unit: m
 	double lengthCol;	// Length of columns, Unit: m
@@ -107,9 +120,11 @@ public:
 	double capCol;		// Capacitance of column, Unit: F
 	double resRow;		// Row resistance, Unit: ohm
 	double resCol;		// Column resistance, Unit: ohm
+	double resWBL;
 	double resCellAccess;	// Resistance of access device, Unit: ohm
 	double capCellAccess;	// Capacitance of access device, Unit: ohm
 	double colDelay;	// Column delay, Unit: s
+	double gateCap;   // per-transistor gate capacitance (F)
 
 	double capRSL;
     	double capWBL;
@@ -117,10 +132,22 @@ public:
     	double capSSL;
     	double capWPL;
     	double capWWL;
+
+	double capWBLwire;
+	double capWBLpar;
     	
 	double capWL;
 	double capPL;
 	double capBL;
+
+		/* ---- sense tier: core array + column sense amplifier, no row drivers ---- */
+	double senseLatencyCore;      // one sense event, worst column
+	double senseEnergyCore;       // all numCol columns, one access
+	double readLatencySense;      // = readLatencyCore + senseLatencyCore
+	double readEnergySense;       // = readEnergyCore  + senseEnergyCore
+
+	// 3D floorplan breakdown (set by CalculateArea)
+	double areaStaircase, areaViaRouting, areaMemoryDie, areaLogicDie, areaBondPad, chipFootprint;
 
 	double activityRowWrite;	// Activity for # of rows in the write
 	double activityColWrite;	// Activity for # of columns in the write
@@ -199,6 +226,7 @@ public:
 	RowDecoder               wwlDecoder;
 	RowDecoder               wplDecoder;
 	RowDecoder               wblDecoder;
+	RowDecoder               wblPlaneDecoder;
 	RowDecoder               rblDecoder;
 	RowDecoder               sslDecoder;
 	RowDecoder               rslDecoder;

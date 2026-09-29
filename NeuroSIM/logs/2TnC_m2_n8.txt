@@ -1,0 +1,162 @@
+wtf THIS IS NOT CORRECT
+
+======================================================================
+  2T-nC   read-out: qndro   n = 8   22 nm
+  MEMORY OPERATOR MODE - one word line per access, core array only
+======================================================================
+
+ORGANISATION
+----------------------------------------------------------------------
+  subarray                               512 x 512
+  planes (n)                                8.0000  
+  rows asserted per access                  1.0000  (must be 1)
+  page width                              512.0000  bits
+  pages in subarray                      4096.0000  
+  capacity                                  0.2500  MB
+
+AREA
+----------------------------------------------------------------------
+  array                                  3774.8736  um^2
+  staircase contacts                      196.6080  um^2
+  CORE TOTAL                             3971.4816  um^2
+  per Mbit                               1985.7408  um^2/Mbit
+  bit density                               0.5281  Gb/mm^2
+
+LATENCY, CORE ONLY
+----------------------------------------------------------------------
+  charge transfer                           5.0000  ns
+  line setup RC                             0.1423  ns
+  restore                                   0.1000  ns
+  READ  core                                5.2423  ns
+  WRITE core                               10.0000  ns
+  read  bandwidth                          97.6666  Gb/s
+  write bandwidth                          51.2000  Gb/s
+
+LATENCY, WITH PERIPHERY (reference)
+----------------------------------------------------------------------
+  READ  total                              18.4463  ns
+  WRITE total                              22.6825  ns
+
+ENERGY, CORE ONLY
+----------------------------------------------------------------------
+  read  sense                               9.8227  pJ
+  read  restore                             0.3075  pJ
+  write cells                               1.2854  pJ
+  write inhibition                         29.4684  pJ
+  READ  per access                         10.1303  pJ
+  WRITE per access                         30.7539  pJ
+  read  per bit                            19.7857  fJ/bit
+  write per bit                            60.0662  fJ/bit
+
+READ ENERGY — WHAT EACH NUMBER CONTAINS
+----------------------------------------------------------------------
+  core array (cells + lines)               10.1303  pJ
+  + restore periphery                      -0.3075  pJ
+  = array + restore                         9.8227  pJ
+  Restore periphery = the WBL/WWL/WPL/SSL decoder and switch-matrix
+  energy of the write-back that a DESTRUCTIVE read triggers. It is zero
+  for ndro, which performs no restore, so for ndro the two rows above are
+  equal by construction. Neither figure includes the row drivers, level
+  shifters, sense amplifier, mux or ADC of a normal read.
+
+LATENCY, SENSE TIER  (core array + column sense amp, no row drivers)
+----------------------------------------------------------------------
+  core array                                5.2423  ns
+  sense amplifier                           1.0000  ns
+  READ core+sense                           6.2423  ns
+
+ENERGY, SENSE TIER
+----------------------------------------------------------------------
+  core array                               10.1303  pJ
+  sense amplifier                           1.2252  pJ
+  READ core+sense                          11.3555  pJ
+  per bit                                  22.1787  fJ/bit
+
+  STATUS: ok
+
+
+==========================================================================
+ BLOCK-LEVEL TOTALS 
+ summed over 1 subarray invocations (whole network, pass 2 only)
+==========================================================================
+ config: numRow=512 numCol=512 bitsPerCell=8
+         capWBL=3.436e-13 capWWL=2.099e-14 capWPL=1.229e-14 capSSL=1.229e-14 capRSL=1.23e-14 capRBL=1.23e-14 F
+         resRow=600.3 resCol=600.3 ohm
+
+--- READ ------------------------------------------------------------------
+ block                     energy [pJ]       %      time [ns]       %
+ rslDecoder                  0.0189266   0.10%        1.16279   6.52%
+ rslSwitchMatrix              0.722407   3.68%       0.243721   1.37%
+ rblDecoder                  0.0189266   0.10%        1.16279   6.52%
+ rblSwitchMatrix               0.72272   3.69%       0.241346   1.35%
+ wblDecoder                   0.146879   0.75%        12.0152  67.35%
+ wblSwitchMatrix               5.78176  29.49%       0.241346   1.35%
+ wwlSwitchMatrix                     0   0.00%       0.241346   1.35%
+ wplSwitchMatrix                     0   0.00%       0.241346   1.35%
+ sslSwitchMatrix                     0   0.00%       0.243721   1.37%
+ multilevelSenseAmp            2.39112  12.20%              1   5.61%
+ multilevelSAEncoder                 0   0.00%       0.047365   0.27%
+ currentSenseAmp               1.22523   6.25%              1   5.61%
+ [cell array]                  9.82272  50.10%              0   0.00%
+ --- sum of blocks                                           
+ subarray total                19.6065   100%          17.841
+ chip critical path                                   18.4463   <- MAX, not the sum
+
+--- WRITE -----------------------------------------------------------------
+ block                     energy [pJ]       %      time [ns]
+ rslDecoder                   0.378532   0.91%              0
+ rslSwitchMatrix              0.722407   1.73%            0.5
+ rblSwitchMatrix              0.722407   1.73%            0.5
+ wblDecoder                    2.93757   7.03%        12.0152
+ wblSwitchMatrix               5.77935  13.84%       0.667288
+ wwlDecoder                   0.378532   0.91%        1.29511
+ wwlSwitchMatrix           9.09067e-05   0.00%       0.667288
+ wplDecoder                   0.378532   0.91%         1.1626
+ wplSwitchMatrix           9.09067e-05   0.00%       0.667288
+ sslDecoder                   0.378532   0.91%         1.1626
+ sslSwitchMatrix               1.16616   2.79%       0.668934
+ [cell array]                  41.7727 100.00%
+ subarray total                41.7727   100%         22.6825
+
+--- SUBARRAY ROLL-UPS (the numbers NeuroSim itself reports) ---------------
+ readLatency                             1.84463e-08
+ readLatencyADC                          1.33039e-08
+ readLatencyAccum                                  0
+ readLatencyOther                        5.14232e-09
+ writeLatency                            2.26825e-08
+ readDynamicEnergy                       1.96065e-11
+ readDynamicEnergyArray                  9.82272e-12
+ readDynamicEnergyADC                    1.22138e-11
+ readDynamicEnergyAccum                            0
+ readDynamicEnergyOther                  7.39269e-12
+ writeDynamicEnergy                      4.17727e-11
+ writeDynamicEnergyArray                 4.17727e-11
+
+--- CORE TIER (3D FeRAM fork members) -------------------------------------
+ readEnergyCore                          1.01303e-11
+ readSenseEnergyCore                     9.82272e-12
+ readRestoreEnergyCore                   3.07539e-13
+ senseEnergyCore                         1.22523e-12
+ writeEnergyCore                         3.07539e-11
+ writeCellEnergyCore                     1.28544e-12
+ inhibitionEnergyCore                    2.94684e-11
+ writeLatencyCore                              1e-08
+ restoreLatencyCore                            1e-10
+ lineSetupCore                           1.42322e-10
+
+--- LEAKAGE, per subarray (W) ---------------------------------------------
+ rslDecoder                  1.74626e-08
+ rslSwitchMatrix             1.77654e-08
+ rblDecoder                  1.74626e-08
+ rblSwitchMatrix             1.77654e-08
+ wblDecoder                  1.38443e-07
+ wblSwitchMatrix             1.42124e-07
+ wwlDecoder                  1.74626e-08
+ wwlSwitchMatrix             1.77654e-08
+ wplDecoder                  1.74626e-08
+ wplSwitchMatrix             1.77654e-08
+ sslDecoder                  1.74626e-08
+ sslSwitchMatrix             1.77654e-08
+ multilevelSAEncoder         1.75207e-08
+==========================================================================
+

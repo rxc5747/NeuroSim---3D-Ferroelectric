@@ -107,6 +107,12 @@ enum BusMode
 	HORIZONTAL,	/* horizontal bus */
 	VERTICAL,	/* vertical bus */
 };
+enum IntegrationMode
+{
+	CNA,		/* CMOS Next to Array : periphery beside the array, single die (current) */
+	CUA,		/* CMOS Under Array   : periphery monolithically under the array          */
+	CBA		/* CMOS Bonded Array  : periphery on a bonded second wafer                 */
+};
 
 #endif /* TYPEDEF_H_ */
 

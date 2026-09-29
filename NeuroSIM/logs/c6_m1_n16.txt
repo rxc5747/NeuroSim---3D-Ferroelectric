@@ -1,0 +1,80 @@
+ERROR: Width of subArray is even smaller than a single DFF !!! 
+[Row Decoder] Error: Row Decoder width is even larger than the assigned width !
+[SwitchMatrix] Error: pass gate height is even larger than the array height
+[Row Decoder] Error: Row Decoder width is even larger than the assigned width !
+[SwitchMatrix] Error: pass gate height is even larger than the array height
+
+======================================================================
+  1T-nC   read-out: ndro   n = 16   22 nm
+  MEMORY OPERATOR MODE - one word line per access, core array only
+======================================================================
+
+ORGANISATION
+----------------------------------------------------------------------
+  subarray                                   8 x 8
+  planes (n)                               16.0000  
+  rows asserted per access                  1.0000  (must be 1)
+  page width                                8.0000  bits
+  pages in subarray                       128.0000  
+  capacity                                  0.0001  MB
+
+AREA
+----------------------------------------------------------------------
+  array                                     0.9216  um^2
+  staircase contacts                        6.1440  um^2
+  CORE TOTAL                                7.0656  um^2
+  per Mbit                               7235.1744  um^2/Mbit
+  bit density                               0.1449  Gb/mm^2
+
+LATENCY, CORE ONLY
+----------------------------------------------------------------------
+  charge transfer                           5.0000  ns
+  line setup RC                             0.0000  ns
+  restore                                   0.0000  ns
+  READ  core                                5.0000  ns
+  WRITE core                               10.0000  ns
+  read  bandwidth                           1.6000  Gb/s
+  write bandwidth                           0.8000  Gb/s
+
+LATENCY, WITH PERIPHERY (reference)
+----------------------------------------------------------------------
+  READ  total                               6.1296  ns
+  WRITE total                              10.5802  ns
+
+ENERGY, CORE ONLY
+----------------------------------------------------------------------
+  read  sense                               0.0010  pJ
+  read  restore                             0.0000  pJ
+  write cells                               0.0201  pJ
+  write inhibition                          0.0196  pJ
+  READ  per access                          0.0010  pJ
+  WRITE per access                          0.0396  pJ
+  read  per bit                             0.1250  fJ/bit
+  write per bit                             4.9551  fJ/bit
+
+READ ENERGY — WHAT EACH NUMBER CONTAINS
+----------------------------------------------------------------------
+  core array (cells + lines)                0.0010  pJ
+  + restore periphery                       0.0000  pJ
+  = array + restore                         0.0010  pJ
+  Restore periphery = the WBL/WWL/WPL/SSL decoder and switch-matrix
+  energy of the write-back that a DESTRUCTIVE read triggers. It is zero
+  for ndro, which performs no restore, so for ndro the two rows above are
+  equal by construction. Neither figure includes the row drivers, level
+  shifters, sense amplifier, mux or ADC of a normal read.
+
+LATENCY, SENSE TIER  (core array + column sense amp, no row drivers)
+----------------------------------------------------------------------
+  core array                                5.0000  ns
+  sense amplifier                           1.0000  ns
+  READ core+sense                           6.0000  ns
+
+ENERGY, SENSE TIER
+----------------------------------------------------------------------
+  core array                                0.0010  pJ
+  sense amplifier                           0.0141  pJ
+  READ core+sense                           0.0151  pJ
+  per bit                                   1.8827  fJ/bit
+
+  STATUS: ok
+
